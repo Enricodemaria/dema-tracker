@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Demà · Incassi e spese</title>
+<style>
+:root{
+  --bg:#0b0f16; --panel:#121826; --panel2:#182033; --line:#243049;
+  --tx:#e6ebf5; --mut:#8b97b0; --acc:#6d8fd8; --acc-tx:#0b0f16;
+  --pos:#4cae8a; --neg:#d9695f; --warn:#d9a441;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --bg:#f4f6fa; --panel:#ffffff; --panel2:#eef1f7; --line:#d9dfeb;
+    --tx:#1b2333; --mut:#5d6a83; --acc:#3b62b8; --acc-tx:#ffffff;
+    --pos:#23805e; --neg:#b8453b; --warn:#9a6d12;
+    color-scheme:light;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+.wrap{max-width:1200px;margin:0 auto;padding:14px 14px 100px}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
+h1{font-size:20px;margin:0;font-weight:650;letter-spacing:.2px}
+h2{font-size:16px;margin:0 0 10px;font-weight:650}
+h3{font-size:14px;margin:0 0 8px;font-weight:650;color:var(--mut)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{background:transparent;color:var(--mut);border:0;padding:7px 12px;cursor:pointer;font:inherit}
+.seg button.on{background:var(--acc);color:var(--acc-tx);font-weight:600}
+nav.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;padding-bottom:2px;border-bottom:1px solid var(--line)}
+nav.tabs button{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--mut);padding:9px 12px;cursor:pointer;font:inherit;white-space:nowrap}
+nav.tabs button.on{color:var(--tx);border-bottom-color:var(--acc);font-weight:600}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.kpi .l{color:var(--mut);font-size:12.5px}
+.kpi .v{font-size:21px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi .s{color:var(--mut);font-size:12px;margin-top:2px}
+.pos{color:var(--pos)} .neg{color:var(--neg)} .mut{color:var(--mut)}
+.grid{display:grid;gap:10px}
+.g4{grid-template-columns:repeat(4,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g2{grid-template-columns:repeat(2,1fr)}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+label{display:block;font-size:12.5px;color:var(--mut);margin-bottom:3px}
+input,select,button,textarea{font:inherit}
+input[type=text],input[type=date],input[type=search],input[type=password],select{width:100%;background:var(--panel2);color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-height:40px}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.btn{background:var(--acc);color:var(--acc-tx);border:0;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600;min-height:40px}
+.btn.sec{background:var(--panel2);color:var(--tx);border:1px solid var(--line);font-weight:500}
+.btn.danger{background:transparent;color:var(--neg);border:1px solid var(--neg);font-weight:500}
+.btn.sm{padding:4px 9px;min-height:30px;font-size:13px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+.tot{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums}
+.tblwrap{overflow-x:auto}
+table.tbl{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.tbl th{font-weight:600;color:var(--mut);font-size:12.5px;text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl .r{text-align:right}
+.tbl tfoot td{font-weight:650;border-top:2px solid var(--line);border-bottom:0}
+.tbl tr.edit td{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;background:var(--panel2);border:1px solid var(--line);font-size:12px;color:var(--mut)}
+.bar{height:8px;border-radius:4px;background:var(--panel2);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--acc)}
+.note{color:var(--mut);font-size:13px}
+.warn{border-color:var(--warn);color:var(--warn)}
+.empty{padding:18px;text-align:center;color:var(--mut)}
+svg text{fill:var(--mut);font-size:11px}
+svg .b1{fill:var(--acc)} svg .b2{fill:var(--neg);opacity:.75}
+#quick{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;justify-content:center;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(6px);border-top:1px solid var(--line);z-index:8}
+#quick .btn{flex:1;max-width:260px;min-height:46px;font-size:16px}
+#toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
+#toast.on{opacity:1}
+@media (max-width:760px){
+  .g4,.g3{grid-template-columns:repeat(2,1fr)}
+  .cols2{grid-template-columns:1fr}
+  .tbl.cards thead{display:none}
+  .tbl.cards,.tbl.cards tbody,.tbl.cards tr,.tbl.cards td{display:block;width:100%}
+  .tbl.cards tr{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;padding:6px 10px;background:var(--panel)}
+  .tbl.cards td{border:0;padding:3px 0;display:flex;justify-content:space-between;gap:10px;text-align:right}
+  .tbl.cards td::before{content:attr(data-label);color:var(--mut);text-align:left}
+  .tbl.cards td.nolabel::before{content:none}
+  .tbl.cards td:empty{display:none}
+}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Demà · Incassi e spese</h1>
+    <span id="syncState" class="note" aria-live="polite"></span>
+    <div class="seg" id="annoSeg" role="group" aria-label="Anno"></div>
+  </header>
+  <div id="backupWarn"></div>
+  <div id="closeWarn"></div>
+  <nav class="tabs" id="tabs" role="tablist"></nav>
+  <main id="view"></main>
+</div>
+<div id="quick"><button class="btn" data-quick="inc">+ Incasso</button><button class="btn sec" data-quick="sp">+ Spesa</button></div>
+<div id="toast" role="status"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- utilità ---------- */
+const KEY='dema-tracker-v1', KEY_EXP='dema-tracker-last-export';
+const MESI=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+const GG=['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+const GGL=['Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato','Domenica'];
+const $=(s,r)=>(r||document).querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sum=a=>a.reduce((x,y)=>x+y,0);
+function numParse(v){
+  let s=String(v==null?'':v).trim().replace(/\s|€/g,'');
+  if(s.indexOf(',')>-1) s=s.replace(/\./g,'').replace(',','.');
+  const n=parseFloat(s); return isFinite(n)?n:0;
+}
+const r2=n=>Math.round((n+Number.EPSILON)*100)/100;
+const fmtE=n=>new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}).format(n||0);
+const fmtI=n=>new Intl.NumberFormat('it-IT',{maximumFractionDigits:0}).format(n||0);
+const pct=n=>isFinite(n)?(n*100).toFixed(1).replace('.',',')+'%':'—';
+const todayISO=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
+const fmtD=iso=>{const p=String(iso).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:iso};
+const dow=iso=>new Date(iso+'T12:00:00').getDay();
+const uid=p=>p+'-'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+let toastT;
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2200)}
+
+/* ---------- dati ---------- */
+const RIC0=[];
+const DEF_SETUP={prezzoMedio:5.5,
+  categorie:['Materie Prime','Personale','Bollette','Oneri Bancari','Pubblicità','Affitto','Altro','Eventi'],
+  eventi:['Dopo Sole','Evento speciale','Sagra/festa locale','Chiusura anticipata','Ferie','Chiusura straordinaria'],
+  meteo:['Brutto'],ricorrenti:RIC0};
+const emptyDB=()=>({app:'dema-tracker',versione:1,incassi:[],spese:[],annuali:[],tasse:[],tombs:[],setup:JSON.parse(JSON.stringify(DEF_SETUP))});
+function norm(d){
+  const b=emptyDB();
+  ['incassi','spese','annuali','tasse'].forEach(k=>{b[k]=Array.isArray(d&&d[k])?d[k]:[]});
+  b.tombs=Array.isArray(d&&d.tombs)?d.tombs:[];
+  b.setup=Object.assign(b.setup,(d&&d.setup)||{});
+  if(!Array.isArray(b.setup.ricorrenti))b.setup.ricorrenti=JSON.parse(JSON.stringify(RIC0));
+  ['incassi','spese','annuali','tasse'].forEach(k=>b[k].forEach(r=>{if(!r.id)r.id=uid(k.slice(0,2))}));
+  return b;
+}
+function loadDB(){try{const raw=localStorage.getItem(KEY);if(raw)return norm(JSON.parse(raw))}catch(e){}return emptyDB()}
+let DB=loadDB();
+try{if(!localStorage.getItem(KEY))localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){}
+let SIG={},SETUP_SIG='';
+const COLS=['incassi','spese','annuali','tasse'];
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){toast('Salvataggio locale non riuscito: esporta un backup')}}
+function saveDB(){stamp();persist();scheduleSync()}
+
+const tot=r=>(r.contanti||0)+(r.pos||0)+(r.satispay||0);
+const compet=t=>String(t.competenza||String(t.data).slice(0,4));
+
+/* ---------- stato UI ---------- */
+const UI={tab:'riepilogo',anno:String(new Date().getFullYear()),edit:{},
+  f:{inc:{da:'',a:'',ev:'',me:''},sp:{da:'',a:'',cat:'',ev:'',q:''}},lim:{inc:60,sp:60},open:{inc:false,sp:false},close:{open:false,ym:'',data:'',vals:{}}};
+const yearsPresent=()=>{const s=new Set();DB.incassi.concat(DB.spese,DB.annuali).forEach(r=>s.add(String(r.data).slice(0,4)));return Array.from(s).sort()};
+const inYear=iso=>UI.anno==='tutto'||String(iso).startsWith(UI.anno);
+
+/* ---------- calcoli ---------- */
+function stats(y){
+  const sel=iso=>y==='tutto'||String(iso).startsWith(y);
+  const inc=DB.incassi.filter(r=>sel(r.data));
+  const sp=DB.spese.filter(r=>sel(r.data));
+  const an=DB.annuali.filter(r=>sel(r.data));
+  const tx=DB.tasse.filter(t=>y==='tutto'||compet(t)===y);
+  const incasso=sum(inc.map(tot)), aperti=inc.filter(r=>tot(r)>0);
+  const correnti=sum(sp.map(r=>r.importo)), annuali=sum(an.map(r=>r.importo));
+  const mp=sum(sp.filter(r=>r.categoria==='Materie Prime').map(r=>r.importo));
+  const pers=sum(sp.filter(r=>r.categoria==='Personale').map(r=>r.importo));
+  const spese=correnti+annuali, utile=incasso-spese, tasse=sum(tx.map(t=>t.importo||0));
+  const dichiarato=sum(inc.map(r=>r.chiusura||0));
+  const fissi=annuali+(correnti-mp), food=incasso?mp/incasso:NaN;
+  const be=(1-food)>0?fissi/(1-food):NaN;
+  return {inc,sp,an,tx,incasso,aperti:aperti.length,media:aperti.length?incasso/aperti.length:0,
+    correnti,annuali,mp,pers,spese,utile,tasse,dichiarato,food,
+    prime:incasso?(mp+pers)/incasso:NaN,ebitda:incasso?utile/incasso:NaN,dopoTasse:utile-tasse,
+    fissi,be,beDay:aperti.length?be/aperti.length:NaN};
+}
+function monthRows(y){
+  const years=y==='tutto'?yearsPresent():[y], out=[];
+  years.forEach(yy=>{
+    const rows=[];
+    for(let m=1;m<=12;m++){
+      const p=yy+'-'+String(m).padStart(2,'0');
+      const inc=DB.incassi.filter(r=>r.data.startsWith(p)), sp=DB.spese.filter(r=>r.data.startsWith(p)), an=DB.annuali.filter(r=>r.data.startsWith(p));
+      rows.push({p,label:MESI[m-1]+' '+yy,incasso:sum(inc.map(tot)),ap:inc.filter(r=>tot(r)>0).length,
+        correnti:sum(sp.map(r=>r.importo)),annuali:sum(an.map(r=>r.importo)),
+        mp:sum(sp.filter(r=>r.categoria==='Materie Prime').map(r=>r.importo)),has:inc.length+sp.length+an.length>0});
+    }
+    const idx=rows.map((r,i)=>r.has?i:-1).filter(i=>i>=0);
+    if(idx.length) out.push(...rows.slice(idx[0],idx[idx.length-1]+1));
+  });
+  return out;
+}
+
+/* ---------- shell ---------- */
+const TABS=[['riepilogo','Riepilogo'],['incassi','Incassi'],['spese','Spese'],['fisse','Annuali e tasse'],['setup','Setup']];
+function renderShell(){
+  const ys=yearsPresent(); if(!ys.includes(String(new Date().getFullYear()))) ys.push(String(new Date().getFullYear()));
+  ys.sort();
+  $('#annoSeg').innerHTML=ys.concat(['tutto']).map(y=>`<button data-anno="${y}" class="${UI.anno===y?'on':''}">${y==='tutto'?'Tutto':y}</button>`).join('');
+  $('#tabs').innerHTML=TABS.map(t=>`<button data-tab="${t[0]}" class="${UI.tab===t[0]?'on':''}" role="tab">${t[1]}</button>`).join('');
+  const last=parseInt(localStorage.getItem(KEY_EXP)||'0',10), n=DB.incassi.length+DB.spese.length;
+  const old=!last||(Date.now()-last)>14*864e5;
+  {const t=todayISO(),ym=t.slice(0,7),dd=+t.slice(8,10),ld=+lastDay(ym).slice(8,10);let h='';
+    if(dd>=ld-4&&DB.spese.length&&!UI.close.open){const pm=prevYM(ym);
+      const miss=DB.setup.ricorrenti.filter(x=>{const k=keyD(x.desc);return DB.spese.some(r=>keyD(r.desc)===k&&ymOf(r.data)===pm)&&!DB.spese.some(r=>keyD(r.desc)===k&&ymOf(r.data)===ym)});
+      if(miss.length)h=`<div class="card" style="padding:10px 14px;border-color:var(--acc)">Fine mese: mancano ${miss.length} voci ricorrenti di ${labelYM(ym)}. <a href="#" data-act="close-go" style="color:var(--acc)">Chiudi il mese</a></div>`}
+    $('#closeWarn').innerHTML=h}
+  $('#backupWarn').innerHTML=(n>0&&old&&!AUTH)?`<div class="card warn" style="padding:10px 14px">I dati stanno solo in questo browser. ${last?'Ultimo backup: '+new Date(last).toLocaleDateString('it-IT')+'.':'Non hai ancora fatto un backup.'} <a href="#" data-go="setup" style="color:inherit">Vai a Setup</a></div>`:'';
+}
+function render(){
+  renderShell();
+  const v={riepilogo:vRiepilogo,incassi:vIncassi,spese:vSpese,fisse:vFisse,setup:vSetup}[UI.tab];
+  $('#view').innerHTML=v();
+  if(UI.tab==='incassi'){listInc();fillIncForm()}
+  if(UI.tab==='spese'){listSp();fillSpForm()}
+  if(UI.tab==='fisse'){listFisse();fillFisseForms()}
+}
+
+/* ---------- riepilogo ---------- */
+function kpi(l,v,s,cls){return `<div class="kpi"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div>${s?`<div class="s">${s}</div>`:''}</div>`}
+function chart(rows){
+  if(!rows.length) return '';
+  const W=720,H=210,pl=8,pb=22,pt=8,bw=(W-pl*2)/rows.length;
+  const mx=Math.max(1,...rows.map(r=>Math.max(r.incasso,r.correnti+r.annuali)));
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Incassi e spese per mese">`;
+  rows.forEach((r,i)=>{
+    const x=pl+i*bw, h1=(H-pb-pt)*r.incasso/mx, h2=(H-pb-pt)*(r.correnti+r.annuali)/mx, w=Math.max(4,bw/2-3);
+    s+=`<rect class="b1" x="${x+2}" y="${H-pb-h1}" width="${w}" height="${h1}" rx="2"><title>${esc(r.label)} · incasso ${fmtE(r.incasso)}</title></rect>`;
+    s+=`<rect class="b2" x="${x+2+w+2}" y="${H-pb-h2}" width="${w}" height="${h2}" rx="2"><title>${esc(r.label)} · spese ${fmtE(r.correnti+r.annuali)}</title></rect>`;
+    if(rows.length<=14||i%2===0) s+=`<text x="${x+bw/2}" y="${H-6}" text-anchor="middle">${r.label.slice(0,3)}</text>`;
+  });
+  return s+'</svg><div class="note"><span style="color:var(--acc)">■</span> incasso &nbsp; <span style="color:var(--neg)">■</span> spese (correnti + annuali)</div>';
+}
+function vRiepilogo(){
+  const S=stats(UI.anno);
+  if(!DB.incassi.length&&!DB.spese.length) return `<div class="card empty">Ancora nessun dato. Registra il primo incasso nella scheda <b>Incassi</b>, oppure carica il backup in <b>Setup</b>.</div>`;
+  const mr=monthRows(UI.anno);
+  const kp=`<div class="kpis">
+    ${kpi('Incasso',fmtE(S.incasso),S.aperti+' giorni di apertura')}
+    ${kpi('Spese totali',fmtE(S.spese),'correnti '+fmtI(S.correnti)+' € · annuali '+fmtI(S.annuali)+' €')}
+    ${kpi('Utile',fmtE(S.utile),'EBITDA '+pct(S.ebitda),S.utile>=0?'pos':'neg')}
+    ${kpi('Utile dopo tasse',fmtE(S.dopoTasse),'tasse e contributi '+fmtE(S.tasse),S.dopoTasse>=0?'pos':'neg')}
+    ${kpi('Media al giorno',fmtE(S.media),'sui giorni aperti')}
+    ${kpi('Food cost',pct(S.food),'materie prime / incasso')}
+    ${kpi('Prime cost',pct(S.prime),'(materie prime + personale) / incasso')}
+    ${kpi('Dichiarato in cassa',fmtE(S.dichiarato),'somma della colonna Chiusura')}
+  </div>`;
+  const monthTbl=`<div class="card"><h2>Mese per mese</h2>${chart(mr)}
+    <div class="tblwrap"><table class="tbl cards"><thead><tr><th>Mese</th><th class="r">Incasso</th><th class="r">Spese correnti</th><th class="r">Annuali</th><th class="r">Utile</th><th class="r">Aperture</th><th class="r">Media/g</th><th class="r">Food</th></tr></thead><tbody>
+    ${mr.map(r=>{const u=r.incasso-r.correnti-r.annuali;return `<tr><td data-label="Mese">${esc(r.label)}</td><td class="r" data-label="Incasso">${fmtE(r.incasso)}</td><td class="r" data-label="Spese correnti">${fmtE(r.correnti)}</td><td class="r" data-label="Annuali">${r.annuali?fmtE(r.annuali):''}</td><td class="r ${u>=0?'pos':'neg'}" data-label="Utile">${fmtE(u)}</td><td class="r" data-label="Aperture">${r.ap}</td><td class="r" data-label="Media/g">${r.ap?fmtE(r.incasso/r.ap):'—'}</td><td class="r" data-label="Food">${r.incasso?pct(r.mp/r.incasso):'—'}</td></tr>`}).join('')}
+    </tbody></table></div><div class="note" style="margin-top:6px">Gli annuali compaiono nel mese in cui li hai pagati.</div></div>`;
+  // giorni settimana
+  const wd=[1,2,3,4,5,6,0].map((d,i)=>{const rs=S.inc.filter(r=>tot(r)>0&&dow(r.data)===d);return {n:GGL[i],k:rs.length,t:sum(rs.map(tot))}});
+  const mxw=Math.max(1,...wd.map(w=>w.k?w.t/w.k:0));
+  const wdCard=`<div class="card"><h2>Per giorno della settimana</h2>${wd.map(w=>`<div style="display:grid;grid-template-columns:90px 1fr 110px;gap:8px;align-items:center;margin:5px 0"><span>${w.n}</span><div class="bar"><i style="width:${w.k?100*(w.t/w.k)/mxw:0}%"></i></div><span class="r" style="text-align:right">${w.k?fmtE(w.t/w.k):'—'} <span class="mut">(${w.k})</span></span></div>`).join('')}<div class="note">Media sui giorni aperti, tra parentesi quanti giorni.</div></div>`;
+  // metodo pagamento
+  const mt=[['Contanti',sum(S.inc.map(r=>r.contanti||0))],['POS',sum(S.inc.map(r=>r.pos||0))],['Satispay',sum(S.inc.map(r=>r.satispay||0))]];
+  const pay=`<div class="card"><h2>Metodo di pagamento</h2>${mt.map(m=>`<div style="display:grid;grid-template-columns:90px 1fr 130px;gap:8px;align-items:center;margin:5px 0"><span>${m[0]}</span><div class="bar"><i style="width:${S.incasso?100*m[1]/S.incasso:0}%"></i></div><span style="text-align:right">${fmtE(m[1])} <span class="mut">${pct(S.incasso?m[1]/S.incasso:NaN)}</span></span></div>`).join('')}</div>`;
+  // categorie
+  const cats=DB.setup.categorie.map(c=>({c,t:sum(S.sp.filter(r=>r.categoria===c).map(r=>r.importo))})).filter(x=>x.t>0).sort((a,b)=>b.t-a.t);
+  const catC=`<div class="card"><h2>Spese correnti per categoria</h2>${cats.length?cats.map(x=>`<div style="display:grid;grid-template-columns:120px 1fr 130px;gap:8px;align-items:center;margin:5px 0"><span>${esc(x.c)}</span><div class="bar"><i style="width:${S.correnti?100*x.t/S.correnti:0}%"></i></div><span style="text-align:right">${fmtE(x.t)} <span class="mut">${pct(x.t/S.correnti)}</span></span></div>`).join(''):'<div class="empty">Nessuna spesa nel periodo</div>'}</div>`;
+  // fornitori
+  const fm={};S.sp.forEach(r=>{const k=(r.desc||'—').trim();fm[k]=(fm[k]||0)+r.importo});
+  const top=Object.entries(fm).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const fC=`<div class="card"><h2>Fornitori e voci principali</h2>${top.map(t=>`<div style="display:flex;justify-content:space-between;margin:4px 0"><span>${esc(t[0])}</span><span>${fmtE(t[1])}</span></div>`).join('')||'<div class="empty">—</div>'}</div>`;
+  // break-even
+  const prezzo=DB.setup.prezzoMedio||0, pezzi=(S.beDay&&prezzo)?Math.ceil(S.beDay/prezzo):NaN;
+  const beC=`<div class="card"><h2>Punto di pareggio</h2>
+    <div class="grid g2" style="gap:6px 16px">
+      <span class="mut">Costi fissi (annuali + spese non materie prime)</span><b style="text-align:right">${fmtE(S.fissi)}</b>
+      <span class="mut">Food cost reale</span><b style="text-align:right">${pct(S.food)}</b>
+      <span class="mut">Incasso di pareggio nel periodo</span><b style="text-align:right">${fmtE(S.be)}</b>
+      <span class="mut">Incasso minimo al giorno (${S.aperti} giorni)</span><b style="text-align:right">${fmtE(S.beDay)}</b>
+      <span class="mut">Pezzi al giorno (prezzo medio ${fmtE(prezzo)})</span><b style="text-align:right">${isFinite(pezzi)?pezzi:'—'}</b>
+    </div><div class="note" style="margin-top:6px">Calcolo: costi fissi / (1 − food cost). Il prezzo medio si cambia in Setup.</div></div>`;
+  // confronto anni
+  let cmp='';
+  const ys=yearsPresent().filter(y=>DB.incassi.some(r=>r.data.startsWith(y)));
+  if(ys.length>=2){
+    const a=stats(ys[ys.length-2]), b=stats(ys[ys.length-1]);
+    const row=(l,x,y,f,isPct)=>`<tr><td>${l}</td><td class="r">${f(x)}</td><td class="r">${f(y)}</td><td class="r ${(y-x)>=0?'pos':'neg'}">${isPct?((y-x)*100).toFixed(1).replace('.',',')+' pt':(x?pct((y-x)/x):'—')}</td></tr>`;
+    cmp=`<div class="card"><h2>${ys[ys.length-2]} contro ${ys[ys.length-1]}</h2><div class="note">Anno intero contro anno in corso: l'anno in corso è ancora incompleto.</div><div class="tblwrap"><table class="tbl"><thead><tr><th></th><th class="r">${ys[ys.length-2]}</th><th class="r">${ys[ys.length-1]}</th><th class="r">Variazione</th></tr></thead><tbody>
+      ${row('Incasso',a.incasso,b.incasso,fmtE)}${row('Spese',a.spese,b.spese,fmtE)}${row('Utile',a.utile,b.utile,fmtE)}${row('Giorni aperti',a.aperti,b.aperti,fmtI)}${row('Media al giorno',a.media,b.media,fmtE)}${row('Food cost',a.food,b.food,pct,true)}${row('EBITDA',a.ebitda,b.ebitda,pct,true)}
+      </tbody></table></div></div>`;
+  }
+  return kp+monthTbl+`<div class="cols2">${wdCard}${pay}</div><div class="cols2">${catC}${fC}</div><div class="cols2">${beC}${cmp}</div>`;
+}
+
+/* ---------- form helper ---------- */
+const opt=(list,sel,blank)=>(blank!=null?`<option value="">${blank}</option>`:'')+list.map(x=>`<option${x===sel?' selected':''}>${esc(x)}</option>`).join('');
+
+/* ---------- incassi ---------- */
+function vIncassi(){
+  return (UI.open.inc?`<div class="card"><h2 id="incT">Nuovo incasso</h2>
+  <form id="incForm" autocomplete="off">
+    <div class="grid g4">
+      <div><label for="i_data">Data</label><input type="date" id="i_data" required></div>
+      <div><label for="i_c">Contanti</label><input type="text" inputmode="decimal" id="i_c" placeholder="0,00"></div>
+      <div><label for="i_p">POS</label><input type="text" inputmode="decimal" id="i_p" placeholder="0,00"></div>
+      <div><label for="i_s">Satispay</label><input type="text" inputmode="decimal" id="i_s" placeholder="0,00"></div>
+    </div>
+    <div class="grid g4" style="margin-top:10px">
+      <div><label>Totale</label><div class="tot" id="i_tot">0,00 €</div></div>
+      <div><label for="i_ch">Chiusura cassa</label><input type="text" inputmode="decimal" id="i_ch" placeholder="0,00"></div>
+      <div><label for="i_me">Meteo</label><select id="i_me">${opt(DB.setup.meteo,'','—')}</select></div>
+      <div><label for="i_ev">Evento</label><select id="i_ev">${opt(DB.setup.eventi,'','—')}</select></div>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn" type="submit" id="incSave">Salva incasso</button><button class="btn sec" type="button" id="incCancel">Annulla</button></div>
+  </form></div>`:'')+`<div class="card"><div class="row" style="margin-bottom:10px">
+    <div><label>Dal</label><input type="date" data-f="inc.da"></div>
+    <div><label>Al</label><input type="date" data-f="inc.a"></div>
+    <div><label>Evento</label><select data-f="inc.ev">${opt(DB.setup.eventi,UI.f.inc.ev,'Tutti')}</select></div>
+    <div><label>Meteo</label><select data-f="inc.me">${opt(DB.setup.meteo,UI.f.inc.me,'Tutti')}</select></div>
+    <button class="btn sec sm" data-act="reset-inc">Azzera filtri</button>
+  </div><div id="incList"></div></div>`;
+}
+function fillIncForm(){
+  if(!$('#i_data'))return;
+  const e=UI.edit.inc, r=e?DB.incassi.find(x=>x.id===e):null;
+  $('#i_data').value=r?r.data:($('#i_data').value||todayISO());
+  const set=(id,v)=>{$(id).value=(v||v===0)?String(v).replace('.',','):''};
+  set('#i_c',r&&r.contanti);set('#i_p',r&&r.pos);set('#i_s',r&&r.satispay);set('#i_ch',r&&r.chiusura);
+  $('#i_me').value=r?r.meteo||'':'';$('#i_ev').value=r?r.evento||'':'';
+  $('#incT').textContent=r?'Modifica incasso del '+fmtD(r.data):'Nuovo incasso';
+  $('#incSave').textContent=r?'Aggiorna incasso':'Salva incasso';
+  updIncTot();
+}
+function updIncTot(){if(!$('#i_tot'))return;$('#i_tot').textContent=fmtE(numParse($('#i_c').value)+numParse($('#i_p').value)+numParse($('#i_s').value))}
+function listInc(){
+  const f=UI.f.inc;
+  const rows=DB.incassi.filter(r=>inYear(r.data)&&(!f.da||r.data>=f.da)&&(!f.a||r.data<=f.a)&&(!f.ev||r.evento===f.ev)&&(!f.me||r.meteo===f.me)).sort((a,b)=>b.data.localeCompare(a.data));
+  const ap=rows.filter(r=>tot(r)>0), T=sum(rows.map(tot));
+  const best=ap.reduce((m,r)=>!m||tot(r)>tot(m)?r:m,null);
+  const shown=rows.slice(0,UI.lim.inc);
+  $('#incList').innerHTML=!rows.length?'<div class="empty">Nessun incasso con questi filtri</div>':
+  `<div class="row" style="gap:22px;margin-bottom:8px"><div><span class="mut">Totale</span><div class="tot">${fmtE(T)}</div></div><div><span class="mut">Giorni aperti</span><div class="tot">${ap.length}</div></div><div><span class="mut">Media</span><div class="tot">${fmtE(ap.length?T/ap.length:0)}</div></div>${best?`<div><span class="mut">Miglior giorno</span><div class="tot">${fmtE(tot(best))}</div><span class="note">${fmtD(best.data)}</span></div>`:''}</div>
+  <div class="tblwrap"><table class="tbl cards"><thead><tr><th>Data</th><th>Giorno</th><th class="r">Contanti</th><th class="r">POS</th><th class="r">Satispay</th><th class="r">Totale</th><th class="r">Chiusura</th><th>Meteo</th><th>Evento</th><th></th></tr></thead><tbody>
+  ${shown.map(r=>`<tr class="${UI.edit.inc===r.id?'edit':''}"><td data-label="Data">${fmtD(r.data)}</td><td data-label="Giorno">${GG[dow(r.data)]}</td><td class="r" data-label="Contanti">${fmtE(r.contanti)}</td><td class="r" data-label="POS">${fmtE(r.pos)}</td><td class="r" data-label="Satispay">${r.satispay?fmtE(r.satispay):''}</td><td class="r" data-label="Totale"><b>${fmtE(tot(r))}</b></td><td class="r" data-label="Chiusura">${r.chiusura!=null?fmtE(r.chiusura):''}</td><td data-label="Meteo">${esc(r.meteo||'')}</td><td data-label="Evento">${r.evento?`<span class="pill">${esc(r.evento)}</span>`:''}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-inc" data-id="${r.id}">Modifica</button> <button class="btn danger sm" data-act="del-inc" data-id="${r.id}">Elimina</button></td></tr>`).join('')}
+  </tbody></table></div>${rows.length>shown.length?`<div style="text-align:center;margin-top:10px"><button class="btn sec" data-act="more-inc">Mostra altri (${rows.length-shown.length})</button></div>`:''}`;
+}
+function saveInc(ev){
+  ev.preventDefault();
+  const data=$('#i_data').value; if(!data){toast('Manca la data');return}
+  const rec={id:null,data,contanti:r2(numParse($('#i_c').value)),pos:r2(numParse($('#i_p').value)),satispay:r2(numParse($('#i_s').value)),
+    chiusura:$('#i_ch').value.trim()===''?null:r2(numParse($('#i_ch').value)),meteo:$('#i_me').value,evento:$('#i_ev').value};
+  let ex=UI.edit.inc?DB.incassi.find(x=>x.id===UI.edit.inc):DB.incassi.find(x=>x.data===data);
+  if(ex&&!UI.edit.inc&&!confirm('Esiste già un incasso del '+fmtD(data)+'. Lo sostituisco?'))return;
+  if(ex){rec.id=ex.id;Object.assign(ex,rec)}else{rec.id='inc-'+data;if(DB.incassi.some(x=>x.id===rec.id))rec.id=uid('inc');DB.incassi.push(rec)}
+  saveDB();UI.edit.inc=null;UI.open.inc=false;render();toast('Incasso salvato');
+}
+
+/* ---------- spese ---------- */
+function vSpese(){
+  const forn=Array.from(new Set(DB.spese.map(r=>(r.desc||'').trim()).filter(Boolean))).sort();
+  return (UI.close.open?closePanel():'')+(UI.open.sp?`<div class="card"><h2 id="sT">Nuova spesa</h2>
+  <form id="spForm" autocomplete="off">
+    <div class="grid g4">
+      <div><label for="s_data">Data</label><input type="date" id="s_data" required></div>
+      <div style="grid-column:span 2"><label for="s_desc">Fornitore / descrizione</label><input type="text" id="s_desc" list="fornList" required></div>
+      <div><label for="s_imp">Importo</label><input type="text" inputmode="decimal" id="s_imp" placeholder="0,00" required></div>
+    </div>
+    <datalist id="fornList">${forn.map(f=>`<option value="${esc(f)}">`).join('')}</datalist>
+    <div class="grid g4" style="margin-top:10px">
+      <div><label for="s_cat">Categoria</label><select id="s_cat">${opt(DB.setup.categorie,'Materie Prime')}</select></div>
+      <div><label for="s_ev">Evento</label><select id="s_ev">${opt(DB.setup.eventi.filter(e=>e!=='Chiusura straordinaria'),'','—')}</select></div>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn" type="submit" id="spSave">Salva spesa</button><button class="btn sec" type="button" id="spCancel">Annulla</button></div>
+  </form></div>`:'')+`<div class="card"><div class="row" style="margin-bottom:10px">
+    <div><label>Dal</label><input type="date" data-f="sp.da"></div>
+    <div><label>Al</label><input type="date" data-f="sp.a"></div>
+    <div><label>Categoria</label><select data-f="sp.cat">${opt(DB.setup.categorie,UI.f.sp.cat,'Tutte')}</select></div>
+    <div><label>Evento</label><select data-f="sp.ev">${opt(DB.setup.eventi,UI.f.sp.ev,'Tutti')}</select></div>
+    <div><label>Cerca</label><input type="search" data-f="sp.q" value="${esc(UI.f.sp.q)}" placeholder="fornitore o voce"></div>
+    <button class="btn sec sm" data-act="reset-sp">Azzera filtri</button>
+    <button class="btn sm" data-act="close-open" style="margin-left:auto">Chiudi il mese</button>
+  </div><div id="spList"></div></div>`;
+}
+function fillSpForm(){
+  if(!$('#s_data'))return;
+  const e=UI.edit.sp, r=e?DB.spese.find(x=>x.id===e):null;
+  $('#s_data').value=r?r.data:($('#s_data').value||todayISO());
+  $('#s_desc').value=r?r.desc:'';$('#s_imp').value=r?String(r.importo).replace('.',','):'';
+  $('#s_cat').value=r?r.categoria:'Materie Prime';$('#s_ev').value=r?r.evento||'':'';
+  $('#sT').textContent=r?'Modifica spesa del '+fmtD(r.data):'Nuova spesa';
+  $('#spSave').textContent=r?'Aggiorna spesa':'Salva spesa';
+}
+function listSp(){
+  const f=UI.f.sp, q=f.q.trim().toLowerCase();
+  const rows=DB.spese.filter(r=>inYear(r.data)&&(!f.da||r.data>=f.da)&&(!f.a||r.data<=f.a)&&(!f.cat||r.categoria===f.cat)&&(!f.ev||r.evento===f.ev)&&(!q||(r.desc||'').toLowerCase().includes(q))).sort((a,b)=>b.data.localeCompare(a.data));
+  const T=sum(rows.map(r=>r.importo)), shown=rows.slice(0,UI.lim.sp);
+  $('#spList').innerHTML=!rows.length?'<div class="empty">Nessuna spesa con questi filtri</div>':
+  `<div class="row" style="gap:22px;margin-bottom:8px"><div><span class="mut">Totale</span><div class="tot">${fmtE(T)}</div></div><div><span class="mut">Voci</span><div class="tot">${rows.length}</div></div></div>
+  <div class="tblwrap"><table class="tbl cards"><thead><tr><th>Data</th><th>Fornitore / descrizione</th><th class="r">Importo</th><th>Categoria</th><th>Evento</th><th></th></tr></thead><tbody>
+  ${shown.map(r=>`<tr class="${UI.edit.sp===r.id?'edit':''}"><td data-label="Data">${fmtD(r.data)}</td><td data-label="Voce">${esc(r.desc)}</td><td class="r" data-label="Importo"><b>${fmtE(r.importo)}</b></td><td data-label="Categoria">${esc(r.categoria)}</td><td data-label="Evento">${r.evento?`<span class="pill">${esc(r.evento)}</span>`:''}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-sp" data-id="${r.id}">Modifica</button> <button class="btn danger sm" data-act="del-sp" data-id="${r.id}">Elimina</button></td></tr>`).join('')}
+  </tbody></table></div>${rows.length>shown.length?`<div style="text-align:center;margin-top:10px"><button class="btn sec" data-act="more-sp">Mostra altre (${rows.length-shown.length})</button></div>`:''}`;
+}
+function saveSp(ev){
+  ev.preventDefault();
+  const data=$('#s_data').value, desc=$('#s_desc').value.trim(), imp=r2(numParse($('#s_imp').value));
+  if(!data||!desc||!imp){toast('Servono data, voce e importo');return}
+  const rec={data,desc,importo:imp,categoria:$('#s_cat').value,evento:$('#s_ev').value};
+  const ex=UI.edit.sp?DB.spese.find(x=>x.id===UI.edit.sp):null;
+  if(ex)Object.assign(ex,rec);else DB.spese.push(Object.assign({id:uid('sp')},rec));
+  saveDB();UI.edit.sp=null;UI.open.sp=false;render();toast('Spesa salvata');
+}
+
+/* ---------- annuali e tasse ---------- */
+function vFisse(){
+  return `<div class="cols2">
+  <div><div class="card"><h2 id="aT">Spesa annuale / una tantum</h2>
+    <form id="anForm" autocomplete="off"><div class="grid g3">
+      <div><label>Data</label><input type="date" id="a_data" required></div>
+      <div><label>Descrizione</label><input type="text" id="a_desc" required></div>
+      <div><label>Importo</label><input type="text" inputmode="decimal" id="a_imp" required></div></div>
+      <div class="row" style="margin-top:12px"><button class="btn" type="submit" id="anSave">Salva</button><button class="btn sec" type="button" id="anCancel" hidden>Annulla</button></div></form></div>
+    <div class="card"><div id="anList"></div></div></div>
+  <div><div class="card"><h2 id="tT">Tasse e contributi versati</h2>
+    <form id="txForm" autocomplete="off"><div class="grid g3">
+      <div><label>Data</label><input type="date" id="t_data" required></div>
+      <div><label>Tipo</label><select id="t_tipo">${opt(['IVA','IRPEF','INPS','Altro'],'IVA')}</select></div>
+      <div><label>Importo (vuoto = previsto)</label><input type="text" inputmode="decimal" id="t_imp"></div>
+      <div><label>Competenza (anno)</label><input type="text" inputmode="numeric" id="t_comp" placeholder="come la data"></div>
+      <div style="grid-column:span 2"><label>Note</label><input type="text" id="t_note"></div></div>
+      <div class="row" style="margin-top:12px"><button class="btn" type="submit" id="txSave">Salva</button><button class="btn sec" type="button" id="txCancel" hidden>Annulla</button></div></form></div>
+    <div class="card"><div id="txList"></div></div></div></div>`;
+}
+function fillFisseForms(){
+  const a=UI.edit.an?DB.annuali.find(x=>x.id===UI.edit.an):null;
+  $('#a_data').value=a?a.data:todayISO();$('#a_desc').value=a?a.desc:'';$('#a_imp').value=a?String(a.importo).replace('.',','):'';
+  $('#aT').textContent=a?'Modifica spesa annuale':'Spesa annuale / una tantum';$('#anSave').textContent=a?'Aggiorna':'Salva';$('#anCancel').hidden=!a;
+  const t=UI.edit.tx?DB.tasse.find(x=>x.id===UI.edit.tx):null;
+  $('#t_data').value=t?t.data:todayISO();$('#t_tipo').value=t?t.tipo:'IVA';$('#t_imp').value=(t&&t.importo!=null)?String(t.importo).replace('.',','):'';
+  $('#t_comp').value=t?(t.competenza||''):'';$('#t_note').value=t?t.note||'':'';
+  $('#tT').textContent=t?'Modifica versamento':'Tasse e contributi versati';$('#txSave').textContent=t?'Aggiorna':'Salva';$('#txCancel').hidden=!t;
+}
+function listFisse(){
+  const an=DB.annuali.filter(r=>inYear(r.data)).sort((a,b)=>b.data.localeCompare(a.data));
+  $('#anList').innerHTML=`<h3>Annuali e una tantum · totale ${fmtE(sum(an.map(r=>r.importo)))}</h3>`+(an.length?`<div class="tblwrap"><table class="tbl cards"><tbody>${an.map(r=>`<tr class="${UI.edit.an===r.id?'edit':''}"><td data-label="Data">${fmtD(r.data)}</td><td data-label="Voce">${esc(r.desc)}</td><td class="r" data-label="Importo"><b>${fmtE(r.importo)}</b></td><td class="r nolabel"><button class="btn sec sm" data-act="edit-an" data-id="${r.id}">Modifica</button> <button class="btn danger sm" data-act="del-an" data-id="${r.id}">Elimina</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nessuna voce</div>');
+  const tx=DB.tasse.filter(t=>UI.anno==='tutto'||compet(t)===UI.anno).sort((a,b)=>b.data.localeCompare(a.data));
+  const byT=['IVA','IRPEF','INPS','Altro'].map(k=>[k,sum(tx.filter(t=>t.tipo===k).map(t=>t.importo||0))]).filter(x=>x[1]>0);
+  $('#txList').innerHTML=`<h3>Tasse e contributi · totale ${fmtE(sum(tx.map(t=>t.importo||0)))}</h3>`+(byT.length?`<div class="note" style="margin-bottom:8px">${byT.map(x=>x[0]+' '+fmtE(x[1])).join(' · ')}</div>`:'')+(tx.length?`<div class="tblwrap"><table class="tbl cards"><tbody>${tx.map(t=>`<tr class="${UI.edit.tx===t.id?'edit':''}"><td data-label="Data">${fmtD(t.data)}</td><td data-label="Tipo"><span class="pill">${esc(t.tipo)}</span></td><td class="r" data-label="Importo">${t.importo!=null?'<b>'+fmtE(t.importo)+'</b>':'<span class="mut">previsto</span>'}</td><td data-label="Note">${esc(t.note||'')}${compet(t)!==String(t.data).slice(0,4)?` <span class="mut">(comp. ${compet(t)})</span>`:''}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-tx" data-id="${t.id}">Modifica</button> <button class="btn danger sm" data-act="del-tx" data-id="${t.id}">Elimina</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nessun versamento</div>');
+}
+function saveAn(ev){
+  ev.preventDefault();
+  const rec={data:$('#a_data').value,desc:$('#a_desc').value.trim(),importo:r2(numParse($('#a_imp').value))};
+  if(!rec.data||!rec.desc||!rec.importo){toast('Servono data, descrizione e importo');return}
+  const ex=UI.edit.an?DB.annuali.find(x=>x.id===UI.edit.an):null;
+  if(ex)Object.assign(ex,rec);else DB.annuali.push(Object.assign({id:uid('an')},rec));
+  saveDB();UI.edit.an=null;render();toast('Salvato');
+}
+function saveTx(ev){
+  ev.preventDefault();
+  const imp=$('#t_imp').value.trim();
+  const rec={data:$('#t_data').value,tipo:$('#t_tipo').value,importo:imp===''?null:r2(numParse(imp)),note:$('#t_note').value.trim()};
+  const c=parseInt($('#t_comp').value,10); rec.competenza=isFinite(c)?c:parseInt(rec.data.slice(0,4),10);
+  if(!rec.data){toast('Manca la data');return}
+  const ex=UI.edit.tx?DB.tasse.find(x=>x.id===UI.edit.tx):null;
+  if(ex)Object.assign(ex,rec);else DB.tasse.push(Object.assign({id:uid('tx')},rec));
+  saveDB();UI.edit.tx=null;render();toast('Salvato');
+}
+
+/* ---------- chiusura mese (voci ricorrenti) ---------- */
+const keyD=x=>String(x==null?'':x).trim().toLowerCase();
+const ymOf=iso=>String(iso).slice(0,7);
+function lastDay(ym){const a=ym.split('-').map(Number);return ym+'-'+String(new Date(a[0],a[1],0).getDate()).padStart(2,'0')}
+function prevYM(ym){const a=ym.split('-').map(Number),d=new Date(a[0],a[1]-2,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')}
+function labelYM(ym){const a=ym.split('-');return MESI[+a[1]-1]+' '+a[0]}
+function defaultCloseYM(){const t=todayISO();return +t.slice(8,10)<=5?prevYM(t.slice(0,7)):t.slice(0,7)}
+function ricStatus(ym){
+  return DB.setup.ricorrenti.map(x=>{
+    const k=keyD(x.desc), here=DB.spese.filter(r=>keyD(r.desc)===k&&ymOf(r.data)===ym);
+    const p=DB.spese.filter(r=>keyD(r.desc)===k&&ymOf(r.data)<ym).sort((a,b)=>b.data.localeCompare(a.data))[0];
+    return {x,k,hasHere:here.length>0,here:sum(here.map(r=>r.importo)),prev:p?{v:p.importo,ym:ymOf(p.data)}:null};
+  });
+}
+function openClose(){const ym=defaultCloseYM();UI.tab='spese';UI.close={open:true,ym,data:lastDay(ym),vals:{}};render();window.scrollTo(0,0)}
+function closeTot(){return sum(ricStatus(UI.close.ym).filter(s=>!s.hasHere).map(s=>numParse(UI.close.vals[s.k])))}
+function closePanel(){
+  const C=UI.close, st=ricStatus(C.ym);
+  let cur=todayISO().slice(0,7);const yms=[];for(let i=0;i<15;i++){yms.push(cur);cur=prevYM(cur)}
+  if(!yms.includes(C.ym))yms.push(C.ym);
+  return `<div class="card"><h2>Chiudi il mese</h2>
+  <div class="row" style="margin-bottom:10px"><div><label for="cm_ym">Mese</label><select id="cm_ym">${yms.map(y=>`<option value="${y}"${y===C.ym?' selected':''}>${labelYM(y)}</option>`).join('')}</select></div>
+  <div><label for="cm_data">Data delle spese</label><input type="date" id="cm_data" value="${esc(C.data)}"></div></div>
+  <div class="tblwrap"><table class="tbl cards"><thead><tr><th>Voce</th><th>Categoria</th><th class="r">Ultimo importo</th><th class="r">Importo</th></tr></thead><tbody>
+  ${st.map((s,i)=>s.hasHere
+    ?`<tr><td data-label="Voce">${esc(s.x.desc)}</td><td data-label="Categoria">${esc(s.x.categoria)}</td><td class="r" data-label="Stato"><span class="pill">già registrata · ${fmtE(s.here)}</span></td><td></td></tr>`
+    :`<tr><td data-label="Voce">${esc(s.x.desc)}</td><td data-label="Categoria">${esc(s.x.categoria)}</td><td class="r" data-label="Ultimo importo">${s.prev?`<a href="#" data-act="fill-prev" data-i="${i}" style="color:var(--acc)">${fmtE(s.prev.v)}</a> <span class="mut">${MESI[+s.prev.ym.slice(5)-1].slice(0,3)}</span>`:'<span class="mut">—</span>'}</td><td class="r" data-label="Importo"><input type="text" inputmode="decimal" class="cm-in" data-k="${esc(s.k)}" value="${esc(C.vals[s.k]||'')}" placeholder="0,00" style="max-width:130px;text-align:right"></td></tr>`).join('')}
+  </tbody></table></div>
+  <div class="row" style="margin-top:12px;justify-content:space-between"><div><span class="mut">Totale da salvare</span><div class="tot" id="cm_tot">${fmtE(closeTot())}</div></div>
+  <div class="row"><button class="btn" data-act="close-save">Salva le voci compilate</button><button class="btn sec" data-act="close-cancel">Annulla</button></div></div>
+  <div class="note" style="margin-top:6px">Le voci lasciate vuote non vengono registrate. Toccando l'ultimo importo lo copi nel campo.</div></div>`;
+}
+function closeSave(){
+  const C=UI.close;if(!C.data){toast('Manca la data');return}
+  let n=0;
+  ricStatus(C.ym).forEach(s=>{if(s.hasHere)return;const v=r2(numParse(C.vals[s.k]));if(v>0){DB.spese.push({id:uid('sp'),data:C.data,desc:s.x.desc,importo:v,categoria:s.x.categoria,evento:''});n++}});
+  if(!n){toast('Nessun importo inserito');return}
+  saveDB();UI.close={open:false,ym:'',data:'',vals:{}};render();toast('Aggiunte '+n+' spese');
+}
+function ricCard(){
+  return `<div class="card"><h2>Voci ricorrenti di fine mese</h2><p class="note">Sono le voci che compaiono nel modulo "Chiudi il mese" (scheda Spese).</p>
+  <div class="tblwrap"><table class="tbl"><tbody>${DB.setup.ricorrenti.map((x,i)=>`<tr><td>${esc(x.desc)}</td><td class="mut">${esc(x.categoria)}</td><td class="r"><button class="btn danger sm" data-act="rm-ric" data-i="${i}">Rimuovi</button></td></tr>`).join('')||'<tr><td class="mut">Nessuna voce</td></tr>'}</tbody></table></div>
+  <div class="row" style="margin-top:10px"><div><label for="new_ric">Nuova voce</label><input type="text" id="new_ric" style="max-width:240px"></div><div><label for="new_ric_cat">Categoria</label><select id="new_ric_cat">${opt(DB.setup.categorie,'Materie Prime')}</select></div><button class="btn sec" data-act="add-ric">Aggiungi</button></div></div>`;
+}
+
+/* ---------- setup ---------- */
+function vSetup(){
+  const list=(k,label)=>`<div class="card"><h2>${label}</h2><div class="row" style="margin-bottom:8px">${DB.setup[k].map((x,i)=>`<span class="pill">${esc(x)} <a href="#" data-act="rm-list" data-k="${k}" data-i="${i}" style="color:var(--neg);text-decoration:none" title="Rimuovi">✕</a></span>`).join('')||'<span class="mut">vuoto</span>'}</div>
+    <div class="row"><input type="text" id="new_${k}" placeholder="Nuova voce" style="max-width:260px"><button class="btn sec" data-act="add-list" data-k="${k}">Aggiungi</button></div></div>`;
+  return syncCard()+`<div class="card"><h2>Backup dei dati</h2>
+    <p class="note">I dati vivono nella memoria di questo browser, su questo indirizzo: se cancelli i dati del sito o cambi telefono, spariscono. Esporta un backup ogni tanto.</p>
+    <div class="row"><button class="btn" data-act="export">Scarica backup (.json)</button>
+    <label class="btn sec" style="margin:0;cursor:pointer;color:var(--tx)">Carica e unisci<input type="file" accept=".json,application/json" id="impMerge" hidden></label>
+    <label class="btn sec" style="margin:0;cursor:pointer;color:var(--tx)">Carica e sostituisci tutto<input type="file" accept=".json,application/json" id="impReplace" hidden></label></div>
+    <p class="note" style="margin-top:8px"><b>Unisci</b> aggiunge solo le righe che mancano (stesso file due volte non crea doppioni). <b>Sostituisci</b> cancella quello che c'è e mette il contenuto del file.</p></div>
+  <div class="card"><h2>Esporta per Excel</h2><div class="row"><button class="btn sec" data-act="csv-inc">Incassi (.csv)</button><button class="btn sec" data-act="csv-sp">Spese (.csv)</button></div></div>
+  <div class="card"><h2>Punto di pareggio</h2><div class="row"><div><label for="prezzo">Prezzo medio per pezzo (€)</label><input type="text" inputmode="decimal" id="prezzo" value="${String(DB.setup.prezzoMedio).replace('.',',')}" style="max-width:140px"></div><button class="btn sec" data-act="save-prezzo">Salva</button></div></div>
+  ${ricCard()}${list('categorie','Categorie di spesa')}${list('eventi','Eventi')}${list('meteo','Meteo')}
+  <div class="card"><h2>Azzera</h2><p class="note">Cancella tutti i dati di questo browser. Scarica prima un backup.</p><button class="btn danger" data-act="wipe">Cancella tutto</button></div>`;
+}
+function download(name,text,type){
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:type||'application/json'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
+}
+function csvCell(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'}
+const cn=n=>String(n==null?'':n).replace('.',',');
+function importFile(file,mode){
+  const fr=new FileReader();
+  fr.onload=()=>{
+    let d;try{d=JSON.parse(fr.result)}catch(e){toast('File non valido');return}
+    if(!d||!Array.isArray(d.incassi)&&!Array.isArray(d.spese)){toast('Non sembra un backup di questo tracker');return}
+    const n=norm(d);
+    if(mode==='replace'){
+      if(!confirm('Sostituisco tutto con il file? Nel file: '+n.incassi.length+' incassi, '+n.spese.length+' spese, '+n.annuali.length+' annuali, '+n.tasse.length+' versamenti.'))return;
+      DB=n;
+    }else{
+      let add=0;
+      ['incassi','spese','annuali','tasse'].forEach(k=>{
+        const ids=new Set(DB[k].map(r=>r.id));
+        const dates=k==='incassi'?new Set(DB.incassi.map(r=>r.data)):null;
+        n[k].forEach(r=>{if(ids.has(r.id)||(dates&&dates.has(r.data)))return;DB[k].push(r);add++});
+      });
+      ['categorie','eventi','meteo'].forEach(k=>n.setup[k].forEach(x=>{if(!DB.setup[k].includes(x))DB.setup[k].push(x)}));
+      n.setup.ricorrenti.forEach(x=>{if(!DB.setup.ricorrenti.some(y=>keyD(y.desc)===keyD(x.desc)))DB.setup.ricorrenti.push(x)});
+      toast('Aggiunte '+add+' righe');
+    }
+    saveDB();render();if(mode==='replace')toast('Dati caricati');
+  };
+  fr.readAsText(file);
+}
+
+/* ---------- sincronizzazione Firebase (REST, senza librerie) ---------- */
+const FB={apiKey:'AIzaSyBmTHxviLJwKQIdmYpFIDPHxnnwakqoWXk',projectId:'dema--tracker'};
+const AUTH_KEY='dema-tracker-auth',SYNC_KEY='dema-tracker-sync';
+let AUTH=(()=>{try{return JSON.parse(localStorage.getItem(AUTH_KEY))||null}catch(e){return null}})();
+let TOK={id:'',exp:0};
+let SY=(()=>{try{return Object.assign({pull:-1,push:0,at:0},JSON.parse(localStorage.getItem(SYNC_KEY))||{})}catch(e){return {pull:-1,push:0,at:0}}})();
+const saveSY=()=>{try{localStorage.setItem(SYNC_KEY,JSON.stringify(SY))}catch(e){}};
+let syncBusy=false,syncAgain=false,syncTimer=null,SS={s:AUTH?'idle':'off',m:''};
+const FS='https://firestore.googleapis.com/v1/projects/'+FB.projectId+'/databases/(default)/documents';
+const DOCROOT='projects/'+FB.projectId+'/databases/(default)/documents';
+
+const sigOf=r=>{const c=Object.assign({},r);delete c._u;return JSON.stringify(c)};
+const setupSig=()=>{const c=Object.assign({},DB.setup);delete c._u;return JSON.stringify(c)};
+function buildSIG(){SIG={};COLS.forEach(c=>DB[c].forEach(r=>{SIG[c+'/'+r.id]=sigOf(r)}));SETUP_SIG=setupSig()}
+function stamp(){
+  const now=Date.now(),cur={};
+  COLS.forEach(c=>DB[c].forEach(r=>{const k=c+'/'+r.id,sg=sigOf(r);cur[k]=1;if(SIG[k]!==sg){r._u=now;SIG[k]=sg}}));
+  Object.keys(SIG).forEach(k=>{if(!(k in cur)){const i=k.indexOf('/');DB.tombs=DB.tombs.filter(t=>!(t.c===k.slice(0,i)&&t.id===k.slice(i+1)));DB.tombs.push({c:k.slice(0,i),id:k.slice(i+1),_u:now});delete SIG[k]}});
+  DB.tombs=DB.tombs.filter(t=>!((t.c+'/'+t.id) in cur));
+  const ss=setupSig();if(ss!==SETUP_SIG){DB.setup._u=now;SETUP_SIG=setupSig()}
+}
+const hhmm=t=>new Date(t).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+function syncText(){
+  if(!AUTH)return 'Non collegato';
+  if(SS.s==='busy')return 'Sincronizzazione in corso…';
+  if(SS.s==='err')return SS.m||'Errore di sincronizzazione';
+  return SY.at?'Ultima sincronizzazione riuscita: '+new Date(SY.at).toLocaleString('it-IT'):'Collegato, non ancora sincronizzato';
+}
+function setSync(s,m){
+  SS={s,m:m||''};
+  const el=$('#syncState');
+  if(el)el.textContent=!AUTH?'':(s==='busy'?'☁ sincronizzo…':s==='err'?'☁ ⚠ '+(SS.m.length>46?SS.m.slice(0,44)+'…':SS.m):(SY.at?'☁ '+hhmm(SY.at):'☁'));
+  const sm=$('#sy_msg');if(sm&&AUTH)sm.textContent=syncText();
+}
+function errText(e){
+  const m=String((e&&e.message)||e);
+  if(e&&e.auth)return 'Sessione scaduta: esci e accedi di nuovo (Setup)';
+  if(e instanceof TypeError||/Failed to fetch|NetworkError|Load failed/i.test(m))return 'Nessuna connessione';
+  if(/INVALID_LOGIN_CREDENTIALS|INVALID_PASSWORD|EMAIL_NOT_FOUND/.test(m))return 'Email o password non corretti';
+  if(/TOO_MANY_ATTEMPTS/.test(m))return 'Troppi tentativi: riprova tra qualche minuto';
+  if(/OPERATION_NOT_ALLOWED/.test(m))return 'Accesso email/password non abilitato su Firebase';
+  if(/API key/i.test(m))return 'Chiave API non valida';
+  if((e&&e.status===403)||/insufficient permissions|PERMISSION_DENIED/i.test(m))return 'Permesso negato: controlla le regole di Firestore e l\'UID';
+  return m;
+}
+async function jpost(url,body,headers){
+  const r=await fetch(url,{method:'POST',headers:Object.assign({'Content-Type':'application/json'},headers||{}),body:JSON.stringify(body)});
+  let j=null;try{j=await r.json()}catch(e){}
+  if(!r.ok){const m=(j&&j.error&&(j.error.message||j.error.status))||('HTTP '+r.status);const err=new Error(typeof m==='string'?m:JSON.stringify(m));err.status=r.status;throw err}
+  return j;
+}
+async function signIn(email,pw){
+  const j=await jpost('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key='+FB.apiKey,{email,password:pw,returnSecureToken:true});
+  TOK={id:j.idToken,exp:Date.now()+(+j.expiresIn||3600)*1000};
+  AUTH={email,refreshToken:j.refreshToken};
+  try{localStorage.setItem(AUTH_KEY,JSON.stringify(AUTH))}catch(e){}
+}
+async function getToken(){
+  if(!AUTH)throw new Error('non collegato');
+  if(TOK.id&&Date.now()<TOK.exp-60000)return TOK.id;
+  const r=await fetch('https://securetoken.googleapis.com/v1/token?key='+FB.apiKey,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(AUTH.refreshToken)});
+  const j=await r.json().catch(()=>null);
+  if(!r.ok||!j||!j.id_token){const e=new Error('SESSIONE_SCADUTA');e.auth=true;throw e}
+  TOK={id:j.id_token,exp:Date.now()+(+j.expires_in||3600)*1000};
+  if(j.refresh_token&&j.refresh_token!==AUTH.refreshToken){AUTH.refreshToken=j.refresh_token;try{localStorage.setItem(AUTH_KEY,JSON.stringify(AUTH))}catch(e){}}
+  return TOK.id;
+}
+const fields=(rec,u,del,sv)=>({u:{integerValue:String(u||0)},s:{integerValue:String(sv||0)},deleted:{booleanValue:!!del},d:{stringValue:del?'':JSON.stringify(rec)}});
+async function fsQuery(coll,since,tok){
+  const j=await jpost(FS+':runQuery',{structuredQuery:{from:[{collectionId:coll}],where:{fieldFilter:{field:{fieldPath:'s'},op:'GREATER_THAN',value:{integerValue:String(since)}}},orderBy:[{field:{fieldPath:'s'},direction:'ASCENDING'}]}},{Authorization:'Bearer '+tok});
+  return (j||[]).filter(x=>x.document).map(x=>{const f=x.document.fields||{};
+    return {id:decodeURIComponent(x.document.name.split('/').pop()),u:+((f.u||{}).integerValue||0),s:+((f.s||{}).integerValue||0),del:!!(f.deleted||{}).booleanValue,rec:(f.d&&f.d.stringValue)?JSON.parse(f.d.stringValue):null}});
+}
+async function fsCommit(writes,tok){
+  for(let i=0;i<writes.length;i+=400)await jpost(FS+':commit',{writes:writes.slice(i,i+400)},{Authorization:'Bearer '+tok});
+}
+function scheduleSync(){if(!AUTH)return;clearTimeout(syncTimer);syncTimer=setTimeout(doSync,2500)}
+async function doSync(){
+  if(!AUTH)return;
+  if(syncBusy){syncAgain=true;return}
+  syncBusy=true;clearTimeout(syncTimer);setSync('busy');
+  const t0=Date.now();let ok=false;
+  try{
+    const tok=await getToken();
+    const since=SY.pull<0?-1:Math.max(-1,SY.pull-600000);
+    const accepted=new Set();let maxU=SY.pull,changed=false;
+    for(const c of COLS){
+      const docs=await fsQuery(c,since,tok);
+      docs.forEach(d=>{
+        if(d.s>maxU)maxU=d.s;
+        const i=DB[c].findIndex(r=>r.id===d.id),loc=i>=0?DB[c][i]:null,tb=DB.tombs.find(t=>t.c===c&&t.id===d.id);
+        const lu=loc?(loc._u||0):(tb?(tb._u||0):-1);
+        if(d.u<=lu)return;
+        DB.tombs=DB.tombs.filter(t=>!(t.c===c&&t.id===d.id));
+        if(d.del){if(i>=0)DB[c].splice(i,1);DB.tombs.push({c,id:d.id,_u:d.u})}
+        else if(d.rec){d.rec._u=d.u;if(i>=0)DB[c][i]=d.rec;else DB[c].push(d.rec)}
+        accepted.add(c+'/'+d.id);changed=true;
+      });
+    }
+    {const docs=await fsQuery('setup',since,tok);
+      docs.forEach(d=>{if(d.s>maxU)maxU=d.s;if(d.id!=='main'||!d.rec||d.u<=(DB.setup._u||0))return;
+        DB.setup=Object.assign(JSON.parse(JSON.stringify(DEF_SETUP)),d.rec,{_u:d.u});accepted.add('setup/main');changed=true})}
+    // invio quello che è nuovo o modificato da questo dispositivo
+    const first=SY.push===0,need=u=>first||(u||0)>SY.push,writes=[];
+    COLS.forEach(c=>DB[c].forEach(r=>{if(!accepted.has(c+'/'+r.id)&&need(r._u))writes.push({update:{name:DOCROOT+'/'+c+'/'+r.id,fields:fields(r,r._u,false,t0)}})}));
+    DB.tombs.forEach(t=>{if(!accepted.has(t.c+'/'+t.id)&&need(t._u))writes.push({update:{name:DOCROOT+'/'+t.c+'/'+t.id,fields:fields(null,t._u,true,t0)}})});
+    if(!accepted.has('setup/main')&&need(DB.setup._u))writes.push({update:{name:DOCROOT+'/setup/main',fields:fields(DB.setup,DB.setup._u,false,t0)}});
+    if(writes.length){await fsCommit(writes,tok);if(t0>maxU)maxU=t0}
+    SY.pull=maxU;SY.push=t0;SY.at=Date.now();saveSY();
+    if(changed){buildSIG();persist()}
+    ok=true;setSync('ok');
+    if(changed){const busy=UI.open.inc||UI.open.sp||UI.close.open||(document.activeElement&&/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName));if(!busy)render()}
+  }catch(e){
+    if(e&&e.status===401)TOK={id:'',exp:0};
+    setSync('err',errText(e));
+  }
+  syncBusy=false;
+  if(syncAgain){syncAgain=false;if(ok)scheduleSync()}
+}
+async function syLogin(){
+  const em=$('#sy_mail').value.trim(),pw=$('#sy_pw').value,m=$('#sy_msg');
+  if(!em||!pw){m.textContent='Inserisci email e password';return}
+  m.textContent='Accesso in corso…';
+  try{
+    await signIn(em,pw);$('#sy_pw').value='';
+    SY={pull:-1,push:0,at:0};saveSY();setSync('idle');render();await doSync();
+    if(UI.tab==='setup')render();
+  }catch(e){const mm=$('#sy_msg');if(mm)mm.textContent=errText(e)}
+}
+function syncCard(){
+  if(!AUTH)return `<div class="card"><h2>Sincronizzazione (Firebase)</h2><p class="note">Accedi con l'utente creato su Firebase per tenere allineati telefono e PC. I dati restano anche su questo dispositivo, quindi funziona anche senza rete.</p>
+  <div class="row"><div><label for="sy_mail">Email</label><input type="text" id="sy_mail" inputmode="email" autocomplete="username" style="max-width:260px"></div><div><label for="sy_pw">Password</label><input type="password" id="sy_pw" autocomplete="current-password" style="max-width:200px"></div><button class="btn" data-act="sy-login">Accedi</button></div><div id="sy_msg" class="note" style="margin-top:8px"></div></div>`;
+  return `<div class="card"><h2>Sincronizzazione (Firebase)</h2><p style="margin:0 0 4px">Collegato come <b>${esc(AUTH.email)}</b></p><p class="note" id="sy_msg" style="margin:0 0 10px">${esc(syncText())}</p><div class="row"><button class="btn" data-act="sy-now">Sincronizza ora</button><button class="btn sec" data-act="sy-logout">Esci</button></div></div>`;
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&AUTH)doSync()});
+window.addEventListener('online',()=>{if(AUTH)doSync()});
+
+/* ---------- eventi ---------- */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-anno],[data-tab],[data-go],[data-act],[data-quick]'); if(!t)return;
+  if(t.dataset.quick){
+    if(t.dataset.quick==='inc'){const ex=DB.incassi.find(r=>r.data===todayISO());UI.edit.inc=ex?ex.id:null;UI.open.inc=true;UI.tab='incassi';render();window.scrollTo(0,0);const c=$('#i_c');c.focus();c.select()}
+    else{UI.edit.sp=null;UI.open.sp=true;UI.tab='spese';render();window.scrollTo(0,0);$('#s_desc').focus()}
+    return;
+  }
+  if(t.dataset.anno){UI.anno=t.dataset.anno;UI.lim={inc:60,sp:60};render();return}
+  if(t.dataset.tab){UI.tab=t.dataset.tab;UI.close={open:false,ym:'',data:'',vals:{}};UI.open={inc:false,sp:false};UI.edit.inc=null;UI.edit.sp=null;render();window.scrollTo(0,0);return}
+  if(t.dataset.go){e.preventDefault();UI.tab=t.dataset.go;render();return}
+  const a=t.dataset.act,id=t.dataset.id;
+  if(a==='edit-inc'){UI.edit.inc=id;UI.open.inc=true;render();window.scrollTo({top:0,behavior:'smooth'})}
+  else if(a==='del-inc'){const r=DB.incassi.find(x=>x.id===id);if(r&&confirm('Elimino l\'incasso del '+fmtD(r.data)+'?')){DB.incassi=DB.incassi.filter(x=>x.id!==id);if(UI.edit.inc===id){UI.edit.inc=null;UI.open.inc=false}saveDB();render();toast('Eliminato')}}
+  else if(a==='more-inc'){UI.lim.inc+=100;listInc()}
+  else if(a==='reset-inc'){UI.f.inc={da:'',a:'',ev:'',me:''};render()}
+  else if(a==='edit-sp'){UI.edit.sp=id;UI.open.sp=true;render();window.scrollTo({top:0,behavior:'smooth'})}
+  else if(a==='del-sp'){const r=DB.spese.find(x=>x.id===id);if(r&&confirm('Elimino la spesa "'+r.desc+'" del '+fmtD(r.data)+'?')){DB.spese=DB.spese.filter(x=>x.id!==id);if(UI.edit.sp===id){UI.edit.sp=null;UI.open.sp=false}saveDB();render();toast('Eliminata')}}
+  else if(a==='more-sp'){UI.lim.sp+=100;listSp()}
+  else if(a==='reset-sp'){UI.f.sp={da:'',a:'',cat:'',ev:'',q:''};render()}
+  else if(a==='edit-an'){UI.edit.an=id;fillFisseForms();listFisse();window.scrollTo({top:0,behavior:'smooth'})}
+  else if(a==='del-an'){const r=DB.annuali.find(x=>x.id===id);if(r&&confirm('Elimino "'+r.desc+'"?')){DB.annuali=DB.annuali.filter(x=>x.id!==id);saveDB();render();toast('Eliminato')}}
+  else if(a==='edit-tx'){UI.edit.tx=id;fillFisseForms();listFisse();window.scrollTo({top:0,behavior:'smooth'})}
+  else if(a==='del-tx'){const r=DB.tasse.find(x=>x.id===id);if(r&&confirm('Elimino il versamento del '+fmtD(r.data)+'?')){DB.tasse=DB.tasse.filter(x=>x.id!==id);saveDB();render();toast('Eliminato')}}
+  else if(a==='close-open'||a==='close-go'){e.preventDefault();openClose()}
+  else if(a==='close-cancel'){UI.close={open:false,ym:'',data:'',vals:{}};render()}
+  else if(a==='close-save'){closeSave()}
+  else if(a==='fill-prev'){e.preventDefault();const s=ricStatus(UI.close.ym)[+t.dataset.i];if(s&&s.prev){UI.close.vals[s.k]=String(s.prev.v).replace('.',',');const inp=Array.from(document.querySelectorAll('.cm-in')).find(x=>x.dataset.k===s.k);if(inp)inp.value=UI.close.vals[s.k];$('#cm_tot').textContent=fmtE(closeTot())}}
+  else if(a==='add-ric'){const v=$('#new_ric').value.trim();if(v&&!DB.setup.ricorrenti.some(x=>keyD(x.desc)===keyD(v))){DB.setup.ricorrenti.push({desc:v,categoria:$('#new_ric_cat').value});saveDB();render();toast('Voce aggiunta')}}
+  else if(a==='rm-ric'){const i=+t.dataset.i,x=DB.setup.ricorrenti[i];if(x&&confirm('Tolgo "'+x.desc+'" dalle voci ricorrenti? Le spese già registrate restano.')){DB.setup.ricorrenti.splice(i,1);saveDB();render()}}
+  else if(a==='sy-login'){syLogin()}
+  else if(a==='sy-now'){doSync().then(()=>{if(UI.tab==='setup')render()})}
+  else if(a==='sy-logout'){if(confirm('Esco dalla sincronizzazione? I dati restano su questo dispositivo.')){AUTH=null;TOK={id:'',exp:0};try{localStorage.removeItem(AUTH_KEY);localStorage.removeItem(SYNC_KEY)}catch(e){}SY={pull:-1,push:0,at:0};setSync('off');render()}}
+  else if(a==='export'){download('dema-backup-'+todayISO()+'.json',JSON.stringify(DB,null,1));localStorage.setItem(KEY_EXP,String(Date.now()));renderShell();toast('Backup scaricato')}
+  else if(a==='csv-inc'){download('dema-incassi.csv','\ufeffData;Contanti;POS;Satispay;Totale;Chiusura;Meteo;Evento\n'+DB.incassi.slice().sort((x,y)=>x.data.localeCompare(y.data)).map(r=>[r.data,cn(r.contanti),cn(r.pos),cn(r.satispay),cn(r2(tot(r))),cn(r.chiusura),csvCell(r.meteo),csvCell(r.evento)].join(';')).join('\n'),'text/csv')}
+  else if(a==='csv-sp'){download('dema-spese.csv','\ufeffData;Fornitore;Importo;Categoria;Evento\n'+DB.spese.slice().sort((x,y)=>x.data.localeCompare(y.data)).map(r=>[r.data,csvCell(r.desc),cn(r.importo),csvCell(r.categoria),csvCell(r.evento)].join(';')).join('\n'),'text/csv')}
+  else if(a==='save-prezzo'){DB.setup.prezzoMedio=numParse($('#prezzo').value)||5.5;saveDB();toast('Salvato')}
+  else if(a==='add-list'){const k=t.dataset.k,v=$('#new_'+k).value.trim();if(v&&!DB.setup[k].includes(v)){DB.setup[k].push(v);saveDB();render()}}
+  else if(a==='rm-list'){e.preventDefault();const k=t.dataset.k,i=+t.dataset.i,v=DB.setup[k][i];if(confirm('Tolgo "'+v+'" dall\'elenco? Le righe già registrate restano com\'erano.')){DB.setup[k].splice(i,1);saveDB();render()}}
+  else if(a==='wipe'){if(confirm(AUTH?'Cancello TUTTI i dati, anche dal cloud (spariscono su ogni dispositivo)?':'Cancello TUTTI i dati di questo browser?')&&confirm('Sei sicuro? Non si torna indietro.')){DB=emptyDB();saveDB();render();toast('Dati cancellati')}}
+});
+document.addEventListener('submit',e=>{
+  const id=e.target.id; if(id==='incForm')saveInc(e);else if(id==='spForm')saveSp(e);else if(id==='anForm')saveAn(e);else if(id==='txForm')saveTx(e);
+});
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(['i_c','i_p','i_s'].includes(t.id))updIncTot();
+  if(t.classList&&t.classList.contains('cm-in')){UI.close.vals[t.dataset.k]=t.value;$('#cm_tot').textContent=fmtE(closeTot())}
+  if(t.id==='s_desc'&&!UI.edit.sp){
+    const last=DB.spese.filter(r=>(r.desc||'').toLowerCase()===t.value.trim().toLowerCase()).sort((a,b)=>b.data.localeCompare(a.data))[0];
+    if(last)$('#s_cat').value=last.categoria;
+  }
+  if(t.dataset.f&&t.tagName==='INPUT'&&t.type==='search'){const[p,k]=t.dataset.f.split('.');UI.f[p][k]=t.value;UI.lim[p==='inc'?'inc':'sp']=60;listSp()}
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.id==='i_data'&&UI.tab==='incassi'){ // se esiste già un incasso in quella data lo apre in modifica
+    const ex=DB.incassi.find(r=>r.data===t.value);UI.edit.inc=ex?ex.id:null;const d=t.value;fillIncForm();$('#i_data').value=d;listInc();
+  }
+  if(t.dataset.f&&!(t.tagName==='INPUT'&&t.type==='search')){
+    const[p,k]=t.dataset.f.split('.');UI.f[p][k]=t.value;UI.lim[p==='inc'?'inc':'sp']=60;p==='inc'?listInc():listSp();
+  }
+  if(t.id==='cm_ym'){UI.close.ym=t.value;UI.close.data=lastDay(t.value);render()}
+  if(t.id==='cm_data'){UI.close.data=t.value}
+  if(t.id==='impMerge'&&t.files[0]){importFile(t.files[0],'merge');t.value=''}
+  if(t.id==='impReplace'&&t.files[0]){importFile(t.files[0],'replace');t.value=''}
+});
+document.addEventListener('click',e=>{
+  if(e.target.id==='incCancel'){UI.edit.inc=null;UI.open.inc=false;render()}
+  if(e.target.id==='spCancel'){UI.edit.sp=null;UI.open.sp=false;render()}
+  if(e.target.id==='anCancel'){UI.edit.an=null;fillFisseForms();listFisse()}
+  if(e.target.id==='txCancel'){UI.edit.tx=null;fillFisseForms();listFisse()}
+});
+
+buildSIG();
+render();
+if(AUTH){setSync('idle');doSync()}
+})();
+</script>
+</body>
+</html>
