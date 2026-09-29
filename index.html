@@ -84,6 +84,9 @@ svg .b1{fill:var(--acc)} svg .b2{fill:var(--neg-f);opacity:.85}
 html{-webkit-text-size-adjust:100%}
 button,a,input,select,label{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .mlist{display:none}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{border:1px solid var(--line);background:var(--panel2);color:var(--tx);border-radius:99px;padding:6px 13px;min-height:36px;font:inherit;font-size:14px;cursor:pointer}
+.chip.on{background:var(--acc);border-color:var(--acc);color:var(--acc-tx)}
 .mo{display:none}
 .fdet>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:40px;font-weight:600}
 .fdet>summary::-webkit-details-marker{display:none}
@@ -441,15 +444,13 @@ function saveInc(ev){
 
 /* ---------- spese ---------- */
 function vSpese(){
-  const forn=Array.from(new Set(DB.spese.map(r=>(r.desc||'').trim()).filter(Boolean))).sort();
   return (UI.close.open?closePanel():'')+(UI.open.sp?`<div class="card sheet"><button class="sheet-x" data-act="sheet-close" aria-label="Chiudi" type="button">✕</button><h2 id="sT">Nuova spesa</h2>
   <form id="spForm" autocomplete="off">
     <div class="grid g4">
       <div><label for="s_data">Data</label><input type="date" id="s_data" required></div>
-      <div style="grid-column:span 2"><label for="s_desc">Fornitore / descrizione</label><input type="text" id="s_desc" list="fornList" required></div>
+      <div style="grid-column:span 2"><label for="s_desc">Fornitore / descrizione</label><input type="text" id="s_desc" required autocomplete="off" autocapitalize="sentences"><div class="chips" id="s_chips"></div></div>
       <div><label for="s_imp">Importo</label><input type="text" inputmode="decimal" id="s_imp" placeholder="0,00" required></div>
     </div>
-    <datalist id="fornList">${forn.map(f=>`<option value="${esc(f)}">`).join('')}</datalist>
     <div class="grid g4" style="margin-top:10px">
       <div><label for="s_cat">Categoria</label><select id="s_cat">${opt(DB.setup.categorie,'Materie Prime')}</select></div>
       <div><label for="s_ev">Evento</label><select id="s_ev">${opt(DB.setup.eventi.filter(e=>e!=='Chiusura straordinaria'),'','—')}</select></div>
@@ -464,6 +465,23 @@ function vSpese(){
     <button class="btn sec sm" data-act="reset-sp">Azzera filtri</button>
   </div></details><div id="spList"></div></div>`;
 }
+const SUP_MAX=5;
+function topSuppliers(q){
+  q=keyD(q);const ric=new Set(DB.setup.ricorrenti.map(x=>keyD(x.desc)));
+  const lim=new Date(Date.now()-180*864e5).toISOString().slice(0,10),m={};
+  DB.spese.forEach(r=>{const k=keyD(r.desc);if(!k)return;const o=m[k]||(m[k]={names:{},all:0,rec:0});const n=(r.desc||'').trim();o.names[n]=(o.names[n]||0)+1;o.all++;if(r.data>=lim)o.rec++});
+  let list=Object.entries(m).map(([k,o])=>({k,name:Object.entries(o.names).sort((a,b)=>b[1]-a[1])[0][0],all:o.all,rec:o.rec}));
+  if(q)list=list.filter(x=>x.k.includes(q));
+  else list=list.filter(x=>!ric.has(x.k));   // le voci fisse di fine mese si inseriscono da "Chiudi il mese"
+  list.sort((a,b)=>(b.rec-a.rec)||(b.all-a.all)||a.name.localeCompare(b.name,'it'));
+  return list.slice(0,SUP_MAX).map(x=>x.name);
+}
+function renderSupChips(){
+  const box=$('#s_chips'),inp=$('#s_desc');if(!box||!inp)return;
+  const cur=inp.value.trim(),known=DB.spese.some(r=>keyD(r.desc)===keyD(cur));
+  const names=topSuppliers(known?'':cur);
+  box.innerHTML=names.map(n=>`<button type="button" class="chip${keyD(n)===keyD(cur)?' on':''}" data-act="pick-sup" data-name="${esc(n)}">${esc(n)}</button>`).join('');
+}
 function fillSpForm(){
   if(!$('#s_data'))return;
   const e=UI.edit.sp, r=e?DB.spese.find(x=>x.id===e):null;
@@ -472,6 +490,7 @@ function fillSpForm(){
   $('#s_cat').value=r?r.categoria:'Materie Prime';$('#s_ev').value=r?r.evento||'':'';
   $('#sT').textContent=r?'Modifica spesa del '+fmtD(r.data):'Nuova spesa';
   $('#spSave').textContent=r?'Aggiorna spesa':'Salva spesa';
+  renderSupChips();
 }
 function listSp(){
   refreshFBadge('sp');const f=UI.f.sp, q=f.q.trim().toLowerCase();
@@ -928,6 +947,7 @@ document.addEventListener('click',e=>{
   }
   else if(a==='cmp-ytd'){const t0=todayISO(),y=UI.cmp.b;UI.cmp.da=y+'-01-01';UI.cmp.dt=y===t0.slice(0,4)?t0:y+'-12-31';render()}
   else if(a==='cmp-full'){UI.cmp.da=UI.cmp.b+'-01-01';UI.cmp.dt=UI.cmp.b+'-12-31';render()}
+  else if(a==='pick-sup'){const n=t.dataset.name;$('#s_desc').value=n;const last=DB.spese.filter(r=>keyD(r.desc)===keyD(n)).sort((x,y)=>y.data.localeCompare(x.data))[0];if(last&&!UI.edit.sp)$('#s_cat').value=last.categoria;renderSupChips();$('#s_imp').focus()}
   else if(a==='sheet-close'){UI.open={inc:false,sp:false};UI.edit.inc=null;UI.edit.sp=null;UI.close={open:false,ym:'',data:'',vals:{}};render()}
   else if(a==='sy-login'){syLogin()}
   else if(a==='sy-now'){doSync().then(()=>{if(UI.tab==='setup')render()})}
@@ -948,6 +968,7 @@ document.addEventListener('input',e=>{
   const t=e.target;
   if(['i_c','i_p','i_s'].includes(t.id))updIncTot();
   if(t.classList&&t.classList.contains('cm-in')){UI.close.vals[t.dataset.k]=t.value;$('#cm_tot').textContent=fmtE(closeTot())}
+  if(t.id==='s_desc')renderSupChips();
   if(t.id==='s_desc'&&!UI.edit.sp){
     const last=DB.spese.filter(r=>(r.desc||'').toLowerCase()===t.value.trim().toLowerCase()).sort((a,b)=>b.data.localeCompare(a.data))[0];
     if(last)$('#s_cat').value=last.categoria;
