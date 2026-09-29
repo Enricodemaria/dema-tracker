@@ -210,10 +210,8 @@ function renderShell(){
   $('#tabs').innerHTML=TABS.map(t=>`<button data-tab="${t[0]}" class="${UI.tab===t[0]?'on':''}" role="tab">${t[1]}</button>`).join('');
   const last=parseInt(localStorage.getItem(KEY_EXP)||'0',10), n=DB.incassi.length+DB.spese.length;
   const old=!last||(Date.now()-last)>14*864e5;
-  {const t=todayISO(),ym=t.slice(0,7),dd=+t.slice(8,10),ld=+lastDay(ym).slice(8,10);let h='';
-    if(dd>=ld-4&&DB.spese.length&&!UI.close.open){const pm=prevYM(ym);
-      const miss=DB.setup.ricorrenti.filter(x=>{const k=keyD(x.desc);return DB.spese.some(r=>keyD(r.desc)===k&&ymOf(r.data)===pm)&&!DB.spese.some(r=>keyD(r.desc)===k&&ymOf(r.data)===ym)});
-      if(miss.length)h=`<div class="card" style="padding:10px 14px;border-color:var(--acc)">Fine mese: mancano ${miss.length} voci ricorrenti di ${labelYM(ym)}. <a href="#" data-act="close-go" style="color:var(--acc)">Chiudi il mese</a></div>`}
+  {let h='';const pm=pendingClose();
+    if(pm&&!UI.close.open)h=`<div class="card" style="padding:10px 14px;border-color:var(--acc);display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between"><span>Chiusura di <b>${labelYM(pm.ym)}</b>: mancano ${pm.n} voci ricorrenti.</span><span class="row"><button class="btn sm" data-act="close-go" data-ym="${pm.ym}">Chiudi il mese</button><button class="btn sec sm" data-act="close-hide" data-ym="${pm.ym}">Nascondi</button></span></div>`;
     $('#closeWarn').innerHTML=h}
   $('#backupWarn').innerHTML=(n>0&&old&&!AUTH)?`<div class="card warn" style="padding:10px 14px">I dati stanno solo in questo browser. ${last?'Ultimo backup: '+new Date(last).toLocaleDateString('it-IT')+'.':'Non hai ancora fatto un backup.'} <a href="#" data-go="setup" style="color:inherit">Vai a Setup</a></div>`:'';
 }
@@ -480,7 +478,20 @@ const ymOf=iso=>String(iso).slice(0,7);
 function lastDay(ym){const a=ym.split('-').map(Number);return ym+'-'+String(new Date(a[0],a[1],0).getDate()).padStart(2,'0')}
 function prevYM(ym){const a=ym.split('-').map(Number),d=new Date(a[0],a[1]-2,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')}
 function labelYM(ym){const a=ym.split('-');return MESI[+a[1]-1]+' '+a[0]}
-function defaultCloseYM(){const t=todayISO();return +t.slice(8,10)<=5?prevYM(t.slice(0,7)):t.slice(0,7)}
+const CLOSE_HIDE='dema-tracker-close-hide';
+function missingFor(ym){
+  const pm=prevYM(ym);
+  return DB.setup.ricorrenti.filter(x=>{const k=keyD(x.desc);return DB.spese.some(r=>keyD(r.desc)===k&&ymOf(r.data)===pm)&&!DB.spese.some(r=>keyD(r.desc)===k&&ymOf(r.data)===ym)});
+}
+function pendingClose(){
+  if(!DB.spese.length)return null;
+  const ym=prevYM(todayISO().slice(0,7));
+  let hid='';try{hid=localStorage.getItem(CLOSE_HIDE)||''}catch(e){}
+  if(hid===ym)return null;
+  const n=missingFor(ym).length;
+  return n?{ym,n}:null;
+}
+function defaultCloseYM(){const p=pendingClose();return p?p.ym:todayISO().slice(0,7)}
 function ricStatus(ym){
   return DB.setup.ricorrenti.map(x=>{
     const k=keyD(x.desc), here=DB.spese.filter(r=>keyD(r.desc)===k&&ymOf(r.data)===ym);
@@ -488,7 +499,7 @@ function ricStatus(ym){
     return {x,k,hasHere:here.length>0,here:sum(here.map(r=>r.importo)),prev:p?{v:p.importo,ym:ymOf(p.data)}:null};
   });
 }
-function openClose(){const ym=defaultCloseYM();UI.tab='spese';UI.close={open:true,ym,data:lastDay(ym),vals:{}};render();window.scrollTo(0,0)}
+function openClose(y){const ym=y||defaultCloseYM();UI.tab='spese';UI.close={open:true,ym,data:lastDay(ym),vals:{}};render();window.scrollTo(0,0)}
 function closeTot(){return sum(ricStatus(UI.close.ym).filter(s=>!s.hasHere).map(s=>numParse(UI.close.vals[s.k])))}
 function closePanel(){
   const C=UI.close, st=ricStatus(C.ym);
@@ -725,7 +736,9 @@ document.addEventListener('click',e=>{
   else if(a==='del-an'){const r=DB.annuali.find(x=>x.id===id);if(r&&confirm('Elimino "'+r.desc+'"?')){DB.annuali=DB.annuali.filter(x=>x.id!==id);saveDB();render();toast('Eliminato')}}
   else if(a==='edit-tx'){UI.edit.tx=id;fillFisseForms();listFisse();window.scrollTo({top:0,behavior:'smooth'})}
   else if(a==='del-tx'){const r=DB.tasse.find(x=>x.id===id);if(r&&confirm('Elimino il versamento del '+fmtD(r.data)+'?')){DB.tasse=DB.tasse.filter(x=>x.id!==id);saveDB();render();toast('Eliminato')}}
-  else if(a==='close-open'||a==='close-go'){e.preventDefault();openClose()}
+  else if(a==='close-open'){e.preventDefault();openClose()}
+  else if(a==='close-go'){e.preventDefault();openClose(t.dataset.ym)}
+  else if(a==='close-hide'){try{localStorage.setItem(CLOSE_HIDE,t.dataset.ym)}catch(er){}render()}
   else if(a==='close-cancel'){UI.close={open:false,ym:'',data:'',vals:{}};render()}
   else if(a==='close-save'){closeSave()}
   else if(a==='fill-prev'){e.preventDefault();const s=ricStatus(UI.close.ym)[+t.dataset.i];if(s&&s.prev){UI.close.vals[s.k]=String(s.prev.v).replace('.',',');const inp=Array.from(document.querySelectorAll('.cm-in')).find(x=>x.dataset.k===s.k);if(inp)inp.value=UI.close.vals[s.k];$('#cm_tot').textContent=fmtE(closeTot())}}
