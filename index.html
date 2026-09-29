@@ -524,6 +524,13 @@ function closeSave(){
   if(!n){toast('Nessun importo inserito');return}
   saveDB();UI.close={open:false,ym:'',data:'',vals:{}};render();toast('Aggiunte '+n+' spese');
 }
+function mergeCard(){
+  const m={};DB.spese.forEach(r=>{const k=keyD(r.desc);if(!k)return;(m[k]=m[k]||{n:0,names:{}}).n++;m[k].names[r.desc.trim()]=(m[k].names[r.desc.trim()]||0)+1});
+  const list=Object.values(m).map(x=>({name:Object.entries(x.names).sort((a,b)=>b[1]-a[1])[0][0],n:x.n})).sort((a,b)=>a.name.localeCompare(b.name,'it'));
+  return `<div class="card"><h2>Unisci voci con nomi diversi</h2><p class="note">Se la stessa voce è scritta in due modi (es. "Luce" e "Bolletta luce"), le porti sotto un nome solo. Vale per tutte le spese registrate, in ogni anno.</p>
+  <datalist id="mg_names">${list.map(x=>`<option value="${esc(x.name)}">${x.n} spese</option>`).join('')}</datalist>
+  <div class="row"><div><label for="mg_from">Nome da sostituire</label><input type="text" id="mg_from" list="mg_names" style="max-width:240px"></div><div><label for="mg_to">Diventa</label><input type="text" id="mg_to" list="mg_names" style="max-width:240px"></div><button class="btn sec" data-act="merge-names">Unisci</button></div></div>`;
+}
 function ricCard(){
   return `<div class="card"><h2>Voci ricorrenti di fine mese</h2><p class="note">Sono le voci che compaiono nel modulo "Chiudi il mese" (scheda Spese).</p>
   <div class="tblwrap"><table class="tbl"><tbody>${DB.setup.ricorrenti.map((x,i)=>`<tr><td>${esc(x.desc)}</td><td class="mut">${esc(x.categoria)}</td><td class="r"><button class="btn danger sm" data-act="rm-ric" data-i="${i}">Rimuovi</button></td></tr>`).join('')||'<tr><td class="mut">Nessuna voce</td></tr>'}</tbody></table></div>
@@ -542,7 +549,7 @@ function vSetup(){
     <p class="note" style="margin-top:8px"><b>Unisci</b> aggiunge solo le righe che mancano (stesso file due volte non crea doppioni). <b>Sostituisci</b> cancella quello che c'è e mette il contenuto del file.</p></div>
   <div class="card"><h2>Esporta per Excel</h2><div class="row"><button class="btn sec" data-act="csv-inc">Incassi (.csv)</button><button class="btn sec" data-act="csv-sp">Spese (.csv)</button></div></div>
   <div class="card"><h2>Punto di pareggio</h2><div class="row"><div><label for="prezzo">Prezzo medio per pezzo (€)</label><input type="text" inputmode="decimal" id="prezzo" value="${String(DB.setup.prezzoMedio).replace('.',',')}" style="max-width:140px"></div><button class="btn sec" data-act="save-prezzo">Salva</button></div></div>
-  ${ricCard()}${list('categorie','Categorie di spesa')}${list('eventi','Eventi')}${list('meteo','Meteo')}
+  ${mergeCard()}${ricCard()}${list('categorie','Categorie di spesa')}${list('eventi','Eventi')}${list('meteo','Meteo')}
   <div class="card"><h2>Azzera</h2><p class="note">Cancella tutti i dati di questo browser. Scarica prima un backup.</p><button class="btn danger" data-act="wipe">Cancella tutto</button></div>`;
 }
 function download(name,text,type){
@@ -746,6 +753,14 @@ document.addEventListener('click',e=>{
   else if(a==='rm-ric'){const i=+t.dataset.i,x=DB.setup.ricorrenti[i];if(x&&confirm('Tolgo "'+x.desc+'" dalle voci ricorrenti? Le spese già registrate restano.')){DB.setup.ricorrenti.splice(i,1);saveDB();render()}}
   else if(a==='tog-mo'){const k=t.dataset.k;UI.mo[k][t.dataset.ym]=t.getAttribute('aria-expanded')!=='true';k==='inc'?listInc():listSp()}
   else if(a==='mo-all'){const k=t.dataset.k,v=t.dataset.v==='1';document.querySelectorAll('.mhead[data-k="'+k+'"]').forEach(h=>{UI.mo[k][h.dataset.ym]=v});k==='inc'?listInc():listSp()}
+  else if(a==='merge-names'){
+    const from=$('#mg_from').value.trim(),to=$('#mg_to').value.trim();
+    if(!from||!to){toast('Scrivi i due nomi');return}
+    const rows=DB.spese.filter(r=>keyD(r.desc)===keyD(from)&&r.desc.trim()!==to);
+    if(!rows.length){toast('Nessuna spesa da unire');return}
+    if(!confirm('Cambio il nome di '+rows.length+' spese da "'+from+'" a "'+to+'"?'))return;
+    rows.forEach(r=>{r.desc=to});saveDB();render();toast(rows.length+' spese unite in "'+to+'"');
+  }
   else if(a==='sy-login'){syLogin()}
   else if(a==='sy-now'){doSync().then(()=>{if(UI.tab==='setup')render()})}
   else if(a==='sy-logout'){if(confirm('Esco dalla sincronizzazione? I dati restano su questo dispositivo.')){AUTH=null;TOK={id:'',exp:0};try{localStorage.removeItem(AUTH_KEY);localStorage.removeItem(SYNC_KEY)}catch(e){}SY={pull:-1,push:0,at:0};setSync('off');render()}}
