@@ -70,6 +70,8 @@ svg text{fill:var(--mut);font-size:11px}
 svg .b1{fill:var(--acc)} svg .b2{fill:var(--neg);opacity:.75}
 #quick{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;justify-content:center;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(6px);border-top:1px solid var(--line);z-index:8}
 #quick .btn{flex:1;max-width:260px;min-height:46px;font-size:16px}
+.mhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 12px;width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-radius:10px;padding:10px 12px;margin:10px 0 6px;cursor:pointer;font:inherit;text-align:left}
+.mhead .ms{color:var(--mut);font-size:13px;font-variant-numeric:tabular-nums}
 #toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
 #toast.on{opacity:1}
 @media (max-width:760px){
@@ -158,7 +160,7 @@ const compet=t=>String(t.competenza||String(t.data).slice(0,4));
 
 /* ---------- stato UI ---------- */
 const UI={tab:'riepilogo',anno:String(new Date().getFullYear()),edit:{},
-  f:{inc:{da:'',a:'',ev:'',me:''},sp:{da:'',a:'',cat:'',ev:'',q:''}},lim:{inc:60,sp:60},open:{inc:false,sp:false},close:{open:false,ym:'',data:'',vals:{}}};
+  f:{inc:{da:'',a:'',ev:'',me:''},sp:{da:'',a:'',cat:'',ev:'',q:''}},lim:{inc:60,sp:60},mo:{inc:{},sp:{}},open:{inc:false,sp:false},close:{open:false,ym:'',data:'',vals:{}}};
 const yearsPresent=()=>{const s=new Set();DB.incassi.concat(DB.spese,DB.annuali).forEach(r=>s.add(String(r.data).slice(0,4)));return Array.from(s).sort()};
 const inYear=iso=>UI.anno==='tutto'||String(iso).startsWith(UI.anno);
 
@@ -334,17 +336,21 @@ function fillIncForm(){
   updIncTot();
 }
 function updIncTot(){if(!$('#i_tot'))return;$('#i_tot').textContent=fmtE(numParse($('#i_c').value)+numParse($('#i_p').value)+numParse($('#i_s').value))}
+function monthGroups(rows){const g=[];rows.forEach(r=>{const ym=r.data.slice(0,7);let x=g[g.length-1];if(!x||x.ym!==ym){x={ym,rows:[]};g.push(x)}x.rows.push(r)});return g}
+const moOpen=(k,ym,i)=>UI.mo[k][ym]!==undefined?UI.mo[k][ym]:i===0;
+function monthHead(k,g,i,summary){const o=moOpen(k,g.ym,i);return `<button class="mhead" data-act="tog-mo" data-k="${k}" data-ym="${g.ym}" aria-expanded="${o}"><b>${o?'▾':'▸'} ${labelYM(g.ym)}</b><span class="ms">${summary}</span></button>`}
+const moBulk=k=>`<div class="row" style="margin:4px 0 2px"><button class="btn sec sm" data-act="mo-all" data-k="${k}" data-v="1">Apri tutti i mesi</button><button class="btn sec sm" data-act="mo-all" data-k="${k}" data-v="0">Chiudi tutti</button></div>`;
 function listInc(){
   const f=UI.f.inc;
   const rows=DB.incassi.filter(r=>inYear(r.data)&&(!f.da||r.data>=f.da)&&(!f.a||r.data<=f.a)&&(!f.ev||r.evento===f.ev)&&(!f.me||r.meteo===f.me)).sort((a,b)=>b.data.localeCompare(a.data));
   const ap=rows.filter(r=>tot(r)>0), T=sum(rows.map(tot));
   const best=ap.reduce((m,r)=>!m||tot(r)>tot(m)?r:m,null);
-  const shown=rows.slice(0,UI.lim.inc);
+  const rowHtml=r=>`<tr class="${UI.edit.inc===r.id?'edit':''}"><td data-label="Data">${fmtD(r.data)}</td><td data-label="Giorno">${GG[dow(r.data)]}</td><td class="r" data-label="Contanti">${fmtE(r.contanti)}</td><td class="r" data-label="POS">${fmtE(r.pos)}</td><td class="r" data-label="Satispay">${r.satispay?fmtE(r.satispay):''}</td><td class="r" data-label="Totale"><b>${fmtE(tot(r))}</b></td><td class="r" data-label="Chiusura">${r.chiusura!=null?fmtE(r.chiusura):''}</td><td data-label="Meteo">${esc(r.meteo||'')}</td><td data-label="Evento">${r.evento?`<span class="pill">${esc(r.evento)}</span>`:''}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-inc" data-id="${r.id}">Modifica</button> <button class="btn danger sm" data-act="del-inc" data-id="${r.id}">Elimina</button></td></tr>`;
+  const groups=monthGroups(rows);
   $('#incList').innerHTML=!rows.length?'<div class="empty">Nessun incasso con questi filtri</div>':
-  `<div class="row" style="gap:22px;margin-bottom:8px"><div><span class="mut">Totale</span><div class="tot">${fmtE(T)}</div></div><div><span class="mut">Giorni aperti</span><div class="tot">${ap.length}</div></div><div><span class="mut">Media</span><div class="tot">${fmtE(ap.length?T/ap.length:0)}</div></div>${best?`<div><span class="mut">Miglior giorno</span><div class="tot">${fmtE(tot(best))}</div><span class="note">${fmtD(best.data)}</span></div>`:''}</div>
-  <div class="tblwrap"><table class="tbl cards"><thead><tr><th>Data</th><th>Giorno</th><th class="r">Contanti</th><th class="r">POS</th><th class="r">Satispay</th><th class="r">Totale</th><th class="r">Chiusura</th><th>Meteo</th><th>Evento</th><th></th></tr></thead><tbody>
-  ${shown.map(r=>`<tr class="${UI.edit.inc===r.id?'edit':''}"><td data-label="Data">${fmtD(r.data)}</td><td data-label="Giorno">${GG[dow(r.data)]}</td><td class="r" data-label="Contanti">${fmtE(r.contanti)}</td><td class="r" data-label="POS">${fmtE(r.pos)}</td><td class="r" data-label="Satispay">${r.satispay?fmtE(r.satispay):''}</td><td class="r" data-label="Totale"><b>${fmtE(tot(r))}</b></td><td class="r" data-label="Chiusura">${r.chiusura!=null?fmtE(r.chiusura):''}</td><td data-label="Meteo">${esc(r.meteo||'')}</td><td data-label="Evento">${r.evento?`<span class="pill">${esc(r.evento)}</span>`:''}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-inc" data-id="${r.id}">Modifica</button> <button class="btn danger sm" data-act="del-inc" data-id="${r.id}">Elimina</button></td></tr>`).join('')}
-  </tbody></table></div>${rows.length>shown.length?`<div style="text-align:center;margin-top:10px"><button class="btn sec" data-act="more-inc">Mostra altri (${rows.length-shown.length})</button></div>`:''}`;
+  `<div class="row" style="gap:22px;margin-bottom:8px"><div><span class="mut">Totale</span><div class="tot">${fmtE(T)}</div></div><div><span class="mut">Giorni aperti</span><div class="tot">${ap.length}</div></div><div><span class="mut">Media</span><div class="tot">${fmtE(ap.length?T/ap.length:0)}</div></div>${best?`<div><span class="mut">Miglior giorno</span><div class="tot">${fmtE(tot(best))}</div><span class="note">${fmtD(best.data)}</span></div>`:''}</div>`+moBulk('inc')+
+  groups.map((g,i)=>{const gt=sum(g.rows.map(tot)),ga=g.rows.filter(r=>tot(r)>0).length;
+    return monthHead('inc',g,i,`${fmtE(gt)} · ${ga} giorni · media ${fmtE(ga?gt/ga:0)}`)+(moOpen('inc',g.ym,i)?`<div class="tblwrap"><table class="tbl cards"><thead><tr><th>Data</th><th>Giorno</th><th class="r">Contanti</th><th class="r">POS</th><th class="r">Satispay</th><th class="r">Totale</th><th class="r">Chiusura</th><th>Meteo</th><th>Evento</th><th></th></tr></thead><tbody>${g.rows.map(rowHtml).join('')}</tbody></table></div>`:'')}).join('');
 }
 function saveInc(ev){
   ev.preventDefault();
@@ -395,12 +401,13 @@ function fillSpForm(){
 function listSp(){
   const f=UI.f.sp, q=f.q.trim().toLowerCase();
   const rows=DB.spese.filter(r=>inYear(r.data)&&(!f.da||r.data>=f.da)&&(!f.a||r.data<=f.a)&&(!f.cat||r.categoria===f.cat)&&(!f.ev||r.evento===f.ev)&&(!q||(r.desc||'').toLowerCase().includes(q))).sort((a,b)=>b.data.localeCompare(a.data));
-  const T=sum(rows.map(r=>r.importo)), shown=rows.slice(0,UI.lim.sp);
+  const T=sum(rows.map(r=>r.importo));
+  const rowHtml=r=>`<tr class="${UI.edit.sp===r.id?'edit':''}"><td data-label="Data">${fmtD(r.data)}</td><td data-label="Voce">${esc(r.desc)}</td><td class="r" data-label="Importo"><b>${fmtE(r.importo)}</b></td><td data-label="Categoria">${esc(r.categoria)}</td><td data-label="Evento">${r.evento?`<span class="pill">${esc(r.evento)}</span>`:''}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-sp" data-id="${r.id}">Modifica</button> <button class="btn danger sm" data-act="del-sp" data-id="${r.id}">Elimina</button></td></tr>`;
+  const groups=monthGroups(rows);
   $('#spList').innerHTML=!rows.length?'<div class="empty">Nessuna spesa con questi filtri</div>':
-  `<div class="row" style="gap:22px;margin-bottom:8px"><div><span class="mut">Totale</span><div class="tot">${fmtE(T)}</div></div><div><span class="mut">Voci</span><div class="tot">${rows.length}</div></div></div>
-  <div class="tblwrap"><table class="tbl cards"><thead><tr><th>Data</th><th>Fornitore / descrizione</th><th class="r">Importo</th><th>Categoria</th><th>Evento</th><th></th></tr></thead><tbody>
-  ${shown.map(r=>`<tr class="${UI.edit.sp===r.id?'edit':''}"><td data-label="Data">${fmtD(r.data)}</td><td data-label="Voce">${esc(r.desc)}</td><td class="r" data-label="Importo"><b>${fmtE(r.importo)}</b></td><td data-label="Categoria">${esc(r.categoria)}</td><td data-label="Evento">${r.evento?`<span class="pill">${esc(r.evento)}</span>`:''}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-sp" data-id="${r.id}">Modifica</button> <button class="btn danger sm" data-act="del-sp" data-id="${r.id}">Elimina</button></td></tr>`).join('')}
-  </tbody></table></div>${rows.length>shown.length?`<div style="text-align:center;margin-top:10px"><button class="btn sec" data-act="more-sp">Mostra altre (${rows.length-shown.length})</button></div>`:''}`;
+  `<div class="row" style="gap:22px;margin-bottom:8px"><div><span class="mut">Totale</span><div class="tot">${fmtE(T)}</div></div><div><span class="mut">Voci</span><div class="tot">${rows.length}</div></div></div>`+moBulk('sp')+
+  groups.map((g,i)=>{const gt=sum(g.rows.map(r=>r.importo));
+    return monthHead('sp',g,i,`${fmtE(gt)} · ${g.rows.length} voci`)+(moOpen('sp',g.ym,i)?`<div class="tblwrap"><table class="tbl cards"><thead><tr><th>Data</th><th>Fornitore / descrizione</th><th class="r">Importo</th><th>Categoria</th><th>Evento</th><th></th></tr></thead><tbody>${g.rows.map(rowHtml).join('')}</tbody></table></div>`:'')}).join('');
 }
 function saveSp(ev){
   ev.preventDefault();
@@ -724,6 +731,8 @@ document.addEventListener('click',e=>{
   else if(a==='fill-prev'){e.preventDefault();const s=ricStatus(UI.close.ym)[+t.dataset.i];if(s&&s.prev){UI.close.vals[s.k]=String(s.prev.v).replace('.',',');const inp=Array.from(document.querySelectorAll('.cm-in')).find(x=>x.dataset.k===s.k);if(inp)inp.value=UI.close.vals[s.k];$('#cm_tot').textContent=fmtE(closeTot())}}
   else if(a==='add-ric'){const v=$('#new_ric').value.trim();if(v&&!DB.setup.ricorrenti.some(x=>keyD(x.desc)===keyD(v))){DB.setup.ricorrenti.push({desc:v,categoria:$('#new_ric_cat').value});saveDB();render();toast('Voce aggiunta')}}
   else if(a==='rm-ric'){const i=+t.dataset.i,x=DB.setup.ricorrenti[i];if(x&&confirm('Tolgo "'+x.desc+'" dalle voci ricorrenti? Le spese già registrate restano.')){DB.setup.ricorrenti.splice(i,1);saveDB();render()}}
+  else if(a==='tog-mo'){const k=t.dataset.k;UI.mo[k][t.dataset.ym]=t.getAttribute('aria-expanded')!=='true';k==='inc'?listInc():listSp()}
+  else if(a==='mo-all'){const k=t.dataset.k,v=t.dataset.v==='1';document.querySelectorAll('.mhead[data-k="'+k+'"]').forEach(h=>{UI.mo[k][h.dataset.ym]=v});k==='inc'?listInc():listSp()}
   else if(a==='sy-login'){syLogin()}
   else if(a==='sy-now'){doSync().then(()=>{if(UI.tab==='setup')render()})}
   else if(a==='sy-logout'){if(confirm('Esco dalla sincronizzazione? I dati restano su questo dispositivo.')){AUTH=null;TOK={id:'',exp:0};try{localStorage.removeItem(AUTH_KEY);localStorage.removeItem(SYNC_KEY)}catch(e){}SY={pull:-1,push:0,at:0};setSync('off');render()}}
