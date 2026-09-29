@@ -160,7 +160,7 @@ const compet=t=>String(t.competenza||String(t.data).slice(0,4));
 
 /* ---------- stato UI ---------- */
 const UI={tab:'riepilogo',anno:String(new Date().getFullYear()),edit:{},
-  f:{inc:{da:'',a:'',ev:'',me:''},sp:{da:'',a:'',cat:'',ev:'',q:''}},lim:{inc:60,sp:60},mo:{inc:{},sp:{}},open:{inc:false,sp:false},close:{open:false,ym:'',data:'',vals:{}}};
+  f:{inc:{da:'',a:'',ev:'',me:''},sp:{da:'',a:'',cat:'',ev:'',q:''}},lim:{inc:60,sp:60},mo:{inc:{},sp:{}},cmp:{a:'',b:'',da:'',dt:''},open:{inc:false,sp:false},close:{open:false,ym:'',data:'',vals:{}}};
 const yearsPresent=()=>{const s=new Set();DB.incassi.concat(DB.spese,DB.annuali).forEach(r=>s.add(String(r.data).slice(0,4)));return Array.from(s).sort()};
 const inYear=iso=>UI.anno==='tutto'||String(iso).startsWith(UI.anno);
 
@@ -202,10 +202,11 @@ function monthRows(y){
 }
 
 /* ---------- shell ---------- */
-const TABS=[['riepilogo','Riepilogo'],['incassi','Incassi'],['spese','Spese'],['fisse','Annuali e tasse'],['setup','Setup']];
+const TABS=[['riepilogo','Riepilogo'],['confronto','Confronto'],['incassi','Incassi'],['spese','Spese'],['fisse','Annuali e tasse'],['setup','Setup']];
 function renderShell(){
   const ys=yearsPresent(); if(!ys.includes(String(new Date().getFullYear()))) ys.push(String(new Date().getFullYear()));
   ys.sort();
+  $('#annoSeg').style.display=UI.tab==='confronto'?'none':'';
   $('#annoSeg').innerHTML=ys.concat(['tutto']).map(y=>`<button data-anno="${y}" class="${UI.anno===y?'on':''}">${y==='tutto'?'Tutto':y}</button>`).join('');
   $('#tabs').innerHTML=TABS.map(t=>`<button data-tab="${t[0]}" class="${UI.tab===t[0]?'on':''}" role="tab">${t[1]}</button>`).join('');
   const last=parseInt(localStorage.getItem(KEY_EXP)||'0',10), n=DB.incassi.length+DB.spese.length;
@@ -217,7 +218,7 @@ function renderShell(){
 }
 function render(){
   renderShell();
-  const v={riepilogo:vRiepilogo,incassi:vIncassi,spese:vSpese,fisse:vFisse,setup:vSetup}[UI.tab];
+  const v={riepilogo:vRiepilogo,confronto:vConfronto,incassi:vIncassi,spese:vSpese,fisse:vFisse,setup:vSetup}[UI.tab];
   $('#view').innerHTML=v();
   if(UI.tab==='incassi'){listInc();fillIncForm()}
   if(UI.tab==='spese'){listSp();fillSpForm()}
@@ -281,17 +282,7 @@ function vRiepilogo(){
       <span class="mut">Incasso minimo al giorno (${S.aperti} giorni)</span><b style="text-align:right">${fmtE(S.beDay)}</b>
       <span class="mut">Pezzi al giorno (prezzo medio ${fmtE(prezzo)})</span><b style="text-align:right">${isFinite(pezzi)?pezzi:'—'}</b>
     </div><div class="note" style="margin-top:6px">Calcolo: costi fissi / (1 − food cost). Il prezzo medio si cambia in Setup.</div></div>`;
-  // confronto anni
-  let cmp='';
-  const ys=yearsPresent().filter(y=>DB.incassi.some(r=>r.data.startsWith(y)));
-  if(ys.length>=2){
-    const a=stats(ys[ys.length-2]), b=stats(ys[ys.length-1]);
-    const row=(l,x,y,f,isPct)=>`<tr><td>${l}</td><td class="r">${f(x)}</td><td class="r">${f(y)}</td><td class="r ${(y-x)>=0?'pos':'neg'}">${isPct?((y-x)*100).toFixed(1).replace('.',',')+' pt':(x?pct((y-x)/x):'—')}</td></tr>`;
-    cmp=`<div class="card"><h2>${ys[ys.length-2]} contro ${ys[ys.length-1]}</h2><div class="note">Anno intero contro anno in corso: l'anno in corso è ancora incompleto.</div><div class="tblwrap"><table class="tbl"><thead><tr><th></th><th class="r">${ys[ys.length-2]}</th><th class="r">${ys[ys.length-1]}</th><th class="r">Variazione</th></tr></thead><tbody>
-      ${row('Incasso',a.incasso,b.incasso,fmtE)}${row('Spese',a.spese,b.spese,fmtE)}${row('Utile',a.utile,b.utile,fmtE)}${row('Giorni aperti',a.aperti,b.aperti,fmtI)}${row('Media al giorno',a.media,b.media,fmtE)}${row('Food cost',a.food,b.food,pct,true)}${row('EBITDA',a.ebitda,b.ebitda,pct,true)}
-      </tbody></table></div></div>`;
-  }
-  return kp+monthTbl+`<div class="cols2">${wdCard}${pay}</div><div class="cols2">${catC}${fC}</div><div class="cols2">${beC}${cmp}</div>`;
+  return kp+monthTbl+`<div class="cols2">${wdCard}${pay}</div><div class="cols2">${catC}${fC}</div>${beC}`;
 }
 
 /* ---------- form helper ---------- */
@@ -470,6 +461,95 @@ function saveTx(ev){
   const ex=UI.edit.tx?DB.tasse.find(x=>x.id===UI.edit.tx):null;
   if(ex)Object.assign(ex,rec);else DB.tasse.push(Object.assign({id:uid('tx')},rec));
   saveDB();UI.edit.tx=null;render();toast('Salvato');
+}
+
+
+/* ---------- confronto tra anni ---------- */
+const pad2=n=>String(n).padStart(2,'0');
+function shiftY(iso,y){const md=iso.slice(5);const leap=(y%4===0&&y%100!==0)||y%400===0;return y+'-'+(md==='02-29'&&!leap?'02-28':md)}
+function periodStats(from,to){
+  const inR=d=>d>=from&&d<=to;
+  const inc=DB.incassi.filter(r=>inR(r.data)),sp=DB.spese.filter(r=>inR(r.data)),an=DB.annuali.filter(r=>inR(r.data));
+  const incasso=sum(inc.map(tot)),aperti=inc.filter(r=>tot(r)>0);
+  const mp=sum(sp.filter(r=>r.categoria==='Materie Prime').map(r=>r.importo));
+  const spese=sum(sp.map(r=>r.importo))+sum(an.map(r=>r.importo)),utile=incasso-spese;
+  return {incasso,spese,utile,ap:aperti.length,media:aperti.length?incasso/aperti.length:0,
+    food:incasso?mp/incasso:NaN,ebitda:incasso?utile/incasso:NaN,aperti,
+    best:aperti.reduce((m,r)=>!m||tot(r)>tot(m)?r:m,null),worst:aperti.reduce((m,r)=>!m||tot(r)<tot(m)?r:m,null)};
+}
+function cmpInit(){
+  const ys=Array.from(new Set(DB.incassi.map(r=>r.data.slice(0,4)))).sort(),C=UI.cmp;
+  if(ys.length<2)return ys;
+  if(!ys.includes(C.b))C.b=ys[ys.length-1];
+  if(!ys.includes(C.a)||C.a===C.b)C.a=ys.filter(y=>y!==C.b).pop();
+  if(!C.da||!C.dt||C.da.slice(0,4)!==C.b||C.dt.slice(0,4)!==C.b){const t=todayISO();C.da=C.b+'-01-01';C.dt=C.b===t.slice(0,4)?t:C.b+'-12-31'}
+  return ys;
+}
+const cmpPct=(d,pt)=>!isFinite(d)?'—':(d>0?'+':'')+(d*100).toFixed(1).replace('.',',')+(pt?' pt':'%');
+function cmpRow(l,a,b,fa,fb,o){
+  o=o||{};const d=o.pt?(b-a):(a?(b-a)/a:NaN),dir=o.inv?-1:1;
+  const cls=!isFinite(d)||d===0?'':(d*dir>0?'pos':'neg');
+  return `<tr><td class="nolabel"><b>${l}</b></td><td class="r" data-label="${o.la}">${isFinite(a)||fa?fa:'—'}</td><td class="r" data-label="${o.lb}">${isFinite(b)||fb?fb:'—'}</td><td class="r ${cls}" data-label="Variazione">${cmpPct(d,o.pt)}</td></tr>`;
+}
+function cmpChart(A,B,ra,rb){
+  const W=720,H=210,pl=8,pb=22,pt=8,bw=(W-pl*2)/12,mx=Math.max(1,...ra.map(r=>r.v),...rb.map(r=>r.v));
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Incassi mensili ${A} contro ${B}">`;
+  for(let i=0;i<12;i++){
+    const x=pl+i*bw,w=Math.max(4,bw/2-3),h1=(H-pb-pt)*ra[i].v/mx,h2=(H-pb-pt)*rb[i].v/mx;
+    s+=`<rect x="${x+2}" y="${H-pb-h1}" width="${w}" height="${h1}" rx="2" style="fill:var(--mut);opacity:.55"><title>${MESI[i]} ${A} · ${fmtE(ra[i].v)}</title></rect>`;
+    if(rb[i].has)s+=`<rect class="b1" x="${x+2+w+2}" y="${H-pb-h2}" width="${w}" height="${h2}" rx="2"><title>${MESI[i]} ${B} · ${fmtE(rb[i].v)}</title></rect>`;
+    s+=`<text x="${x+bw/2}" y="${H-6}" text-anchor="middle">${MESI[i].slice(0,3)}</text>`;
+  }
+  return s+`</svg><div class="note"><span style="color:var(--mut)">■</span> ${A} &nbsp; <span style="color:var(--acc)">■</span> ${B}</div>`;
+}
+function vConfronto(){
+  const ys=cmpInit(),C=UI.cmp;
+  if(ys.length<2)return `<div class="card empty">Servono incassi di almeno due anni diversi per fare un confronto.</div>`;
+  const A=C.a,B=C.b,full=y=>periodStats(y+'-01-01',y+'-12-31'),sA=full(A),sB=full(B);
+  const dayFmt=(r,pre)=>r?`${fmtE(tot(r))} <span class="mut">${fmtD(r.data)}</span>`:'—';
+  const O=x=>Object.assign({la:A,lb:B},x||{});
+  const annual=[
+    cmpRow('Incasso totale',sA.incasso,sB.incasso,fmtE(sA.incasso),fmtE(sB.incasso),O()),
+    cmpRow('Spese totali',sA.spese,sB.spese,fmtE(sA.spese),fmtE(sB.spese),O({inv:1})),
+    cmpRow('Utile',sA.utile,sB.utile,fmtE(sA.utile),fmtE(sB.utile),O()),
+    cmpRow('N. aperture',sA.ap,sB.ap,fmtI(sA.ap),fmtI(sB.ap),O()),
+    cmpRow('Media giornaliera',sA.media,sB.media,fmtE(sA.media),fmtE(sB.media),O()),
+    cmpRow('Food cost %',sA.food,sB.food,pct(sA.food),pct(sB.food),O({pt:1,inv:1})),
+    cmpRow('EBITDA %',sA.ebitda,sB.ebitda,pct(sA.ebitda),pct(sB.ebitda),O({pt:1})),
+    cmpRow('Miglior giorno',sA.best?tot(sA.best):NaN,sB.best?tot(sB.best):NaN,dayFmt(sA.best),dayFmt(sB.best),O()),
+    cmpRow('Peggior giorno',sA.worst?tot(sA.worst):NaN,sB.worst?tot(sB.worst):NaN,dayFmt(sA.worst),dayFmt(sB.worst),O())];
+  // mensile
+  const mt=y=>{const o=[];for(let m=1;m<=12;m++){const rs=DB.incassi.filter(r=>r.data.startsWith(y+'-'+pad2(m)));o.push({v:sum(rs.map(tot)),has:rs.length>0})}return o};
+  const ma=mt(A),mb=mt(B);
+  const monthly=MESI.map((n,i)=>{const a=ma[i],b=mb[i],d=(a.has&&b.has&&a.v>0)?(b.v-a.v)/a.v:NaN;
+    return `<tr><td class="nolabel"><b>${n}</b></td><td class="r" data-label="${A}">${a.has?fmtE(a.v):'—'}</td><td class="r" data-label="${B}">${b.has?fmtE(b.v):'—'}</td><td class="r ${!isFinite(d)||d===0?'':(d>0?'pos':'neg')}" data-label="Variazione">${cmpPct(d)}</td></tr>`}).join('')
+    +`<tr style="font-weight:650"><td class="nolabel"><b>Totale</b></td><td class="r" data-label="${A}">${fmtE(sum(ma.map(x=>x.v)))}</td><td class="r" data-label="${B}">${fmtE(sum(mb.map(x=>x.v)))}</td><td class="r ${sB.incasso>=sA.incasso?'pos':'neg'}" data-label="Variazione">${cmpPct(sA.incasso?(sB.incasso-sA.incasso)/sA.incasso:NaN)}</td></tr>`;
+  // stesso periodo
+  const aFrom=shiftY(C.da,+A),aTo=shiftY(C.dt,+A),pA=periodStats(aFrom,aTo),pB=periodStats(C.da,C.dt);
+  const per=[
+    cmpRow('Incasso',pA.incasso,pB.incasso,fmtE(pA.incasso),fmtE(pB.incasso),O()),
+    cmpRow('Spese',pA.spese,pB.spese,fmtE(pA.spese),fmtE(pB.spese),O({inv:1})),
+    cmpRow('Utile',pA.utile,pB.utile,fmtE(pA.utile),fmtE(pB.utile),O()),
+    cmpRow('N. aperture',pA.ap,pB.ap,fmtI(pA.ap),fmtI(pB.ap),O()),
+    cmpRow('Media giornaliera',pA.media,pB.media,fmtE(pA.media),fmtE(pB.media),O()),
+    cmpRow('Food cost %',pA.food,pB.food,pct(pA.food),pct(pB.food),O({pt:1,inv:1})),
+    cmpRow('EBITDA %',pA.ebitda,pB.ebitda,pct(pA.ebitda),pct(pB.ebitda),O({pt:1}))];
+  // giorno della settimana nel periodo
+  const wdRow=(d,i)=>{const ra=pA.aperti.filter(r=>dow(r.data)===d),rb=pB.aperti.filter(r=>dow(r.data)===d);
+    const a=ra.length?sum(ra.map(tot))/ra.length:NaN,b=rb.length?sum(rb.map(tot))/rb.length:NaN,dv=(isFinite(a)&&isFinite(b)&&a)?(b-a)/a:NaN;
+    return `<tr><td class="nolabel"><b>${GGL[i]}</b></td><td class="r" data-label="${A}">${isFinite(a)?fmtE(a)+' <span class="mut">('+ra.length+')</span>':'—'}</td><td class="r" data-label="${B}">${isFinite(b)?fmtE(b)+' <span class="mut">('+rb.length+')</span>':'—'}</td><td class="r ${!isFinite(dv)||dv===0?'':(dv>0?'pos':'neg')}" data-label="Variazione">${cmpPct(dv)}</td></tr>`};
+  const head=`<thead><tr><th></th><th class="r">${A}</th><th class="r">${B}</th><th class="r">Variazione</th></tr></thead>`;
+  const yopt=(sel)=>ys.map(y=>`<option${y===sel?' selected':''}>${y}</option>`).join('');
+  return `<div class="card"><div class="row"><div><label for="cmp_a">Anno di confronto</label><select id="cmp_a" data-cmp="a" style="max-width:140px">${yopt(A)}</select></div><div><label for="cmp_b">Anno da valutare</label><select id="cmp_b" data-cmp="b" style="max-width:140px">${yopt(B)}</select></div></div></div>
+  <div class="card"><h2>Confronto annuale ${A} · ${B}</h2><div class="tblwrap"><table class="tbl cards">${head}<tbody>${annual.join('')}</tbody></table></div>
+    ${sB.aperti.length&&B===todayISO().slice(0,4)?`<div class="note" style="margin-top:6px">${B} è ancora in corso: per un confronto alla pari usa "Stesso periodo" più sotto.</div>`:''}</div>
+  <div class="card"><h2>Incassi mensili ${A} · ${B}</h2>${cmpChart(A,B,ma,mb)}<div class="tblwrap"><table class="tbl cards">${head}<tbody>${monthly}</tbody></table></div></div>
+  <div class="card"><h2>Stesso periodo</h2><p class="note" style="margin-top:0">Scegli un intervallo del ${B}: il ${A} viene confrontato negli stessi giorni (${fmtD(aFrom)} → ${fmtD(aTo)}).</p>
+    <div class="row" style="margin-bottom:10px"><div><label for="cmp_da">Dal</label><input type="date" id="cmp_da" data-cmp="da" value="${C.da}" min="${B}-01-01" max="${B}-12-31"></div><div><label for="cmp_dt">Al</label><input type="date" id="cmp_dt" data-cmp="dt" value="${C.dt}" min="${B}-01-01" max="${B}-12-31"></div>
+      <button class="btn sec sm" data-act="cmp-ytd">Da inizio anno a oggi</button><button class="btn sec sm" data-act="cmp-full">Anno intero</button></div>
+    <div class="tblwrap"><table class="tbl cards">${head}<tbody>${per.join('')}</tbody></table></div></div>
+  <div class="card"><h2>Per giorno della settimana</h2><p class="note" style="margin-top:0">Media sui giorni aperti dello stesso periodo, tra parentesi quanti giorni.</p>
+    <div class="tblwrap"><table class="tbl cards">${head}<tbody>${[1,2,3,4,5,6,0].map(wdRow).join('')}</tbody></table></div></div>`;
 }
 
 /* ---------- chiusura mese (voci ricorrenti) ---------- */
@@ -761,6 +841,8 @@ document.addEventListener('click',e=>{
     if(!confirm('Cambio il nome di '+rows.length+' spese da "'+from+'" a "'+to+'"?'))return;
     rows.forEach(r=>{r.desc=to});saveDB();render();toast(rows.length+' spese unite in "'+to+'"');
   }
+  else if(a==='cmp-ytd'){const t0=todayISO(),y=UI.cmp.b;UI.cmp.da=y+'-01-01';UI.cmp.dt=y===t0.slice(0,4)?t0:y+'-12-31';render()}
+  else if(a==='cmp-full'){UI.cmp.da=UI.cmp.b+'-01-01';UI.cmp.dt=UI.cmp.b+'-12-31';render()}
   else if(a==='sy-login'){syLogin()}
   else if(a==='sy-now'){doSync().then(()=>{if(UI.tab==='setup')render()})}
   else if(a==='sy-logout'){if(confirm('Esco dalla sincronizzazione? I dati restano su questo dispositivo.')){AUTH=null;TOK={id:'',exp:0};try{localStorage.removeItem(AUTH_KEY);localStorage.removeItem(SYNC_KEY)}catch(e){}SY={pull:-1,push:0,at:0};setSync('off');render()}}
@@ -792,6 +874,12 @@ document.addEventListener('change',e=>{
   }
   if(t.dataset.f&&!(t.tagName==='INPUT'&&t.type==='search')){
     const[p,k]=t.dataset.f.split('.');UI.f[p][k]=t.value;UI.lim[p==='inc'?'inc':'sp']=60;p==='inc'?listInc():listSp();
+  }
+  if(t.dataset.cmp){
+    const C=UI.cmp,k=t.dataset.cmp;
+    if(k==='a'||k==='b'){C[k]=t.value;C.da='';C.dt=''}
+    else{let v=t.value;if(!v||v.slice(0,4)!==C.b)v=k==='da'?C.b+'-01-01':C.b+'-12-31';C[k]=v;if(C.da>C.dt){if(k==='da')C.dt=C.da;else C.da=C.dt}}
+    render();return;
   }
   if(t.id==='cm_ym'){UI.close.ym=t.value;UI.close.data=lastDay(t.value);render()}
   if(t.id==='cm_data'){UI.close.data=t.value}
