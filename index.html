@@ -3,19 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1320" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f2ec" media="(prefers-color-scheme: light)">
 <title>Demà · Incassi e spese</title>
 <style>
 :root{
-  --bg:#0b0f16; --panel:#121826; --panel2:#182033; --line:#243049;
-  --tx:#e6ebf5; --mut:#8b97b0; --acc:#6d8fd8; --acc-tx:#0b0f16;
-  --pos:#4cae8a; --neg:#d9695f; --warn:#d9a441;
+  /* palette: #5972b7 blu · #c3996b sabbia · #f2706c corallo */
+  --bg:#0f1320; --panel:#161b2d; --panel2:#1e2540; --line:#2b3456;
+  --tx:#eceff8; --mut:#9aa3c0;
+  --acc:#5972b7; --acc-t:#8da2e0; --acc-tx:#ffffff;
+  --sec:#c3996b; --sec-t:#c3996b;
+  --neg-f:#f2706c; --neg:#f2706c; --pos:#8da2e0; --warn:#c3996b;
   color-scheme:dark;
 }
 @media (prefers-color-scheme: light){
   :root{
-    --bg:#f4f6fa; --panel:#ffffff; --panel2:#eef1f7; --line:#d9dfeb;
-    --tx:#1b2333; --mut:#5d6a83; --acc:#3b62b8; --acc-tx:#ffffff;
-    --pos:#23805e; --neg:#b8453b; --warn:#9a6d12;
+    --bg:#f5f2ec; --panel:#ffffff; --panel2:#f0ebe2; --line:#ddd5c8;
+    --tx:#1f2333; --mut:#5f6580;
+    --acc:#5972b7; --acc-t:#4a63a8; --acc-tx:#ffffff;
+    --sec:#c3996b; --sec-t:#8f6a3c;
+    --neg-f:#f2706c; --neg:#c8433f; --pos:#3f5798; --warn:#8f6a3c;
     color-scheme:light;
   }
 }
@@ -60,17 +67,17 @@ table.tbl{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 .tbl .r{text-align:right}
 .tbl tfoot td{font-weight:650;border-top:2px solid var(--line);border-bottom:0}
 .tbl tr.edit td{background:color-mix(in srgb,var(--acc) 12%,transparent)}
-.pill{display:inline-block;padding:1px 8px;border-radius:99px;background:var(--panel2);border:1px solid var(--line);font-size:12px;color:var(--mut)}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;background:var(--panel2);border:1px solid color-mix(in srgb,var(--sec) 50%,var(--line));font-size:12px;color:var(--sec-t)}
 .bar{height:8px;border-radius:4px;background:var(--panel2);overflow:hidden}
 .bar i{display:block;height:100%;background:var(--acc)}
 .note{color:var(--mut);font-size:13px}
 .warn{border-color:var(--warn);color:var(--warn)}
 .empty{padding:18px;text-align:center;color:var(--mut)}
 svg text{fill:var(--mut);font-size:11px}
-svg .b1{fill:var(--acc)} svg .b2{fill:var(--neg);opacity:.75}
+svg .b1{fill:var(--acc)} svg .b2{fill:var(--neg-f);opacity:.85}
 #quick{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;justify-content:center;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(6px);border-top:1px solid var(--line);z-index:8}
 #quick .btn{flex:1;max-width:260px;min-height:46px;font-size:16px}
-.mhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 12px;width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-radius:10px;padding:10px 12px;margin:10px 0 6px;cursor:pointer;font:inherit;text-align:left}
+.mhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 12px;width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-left:4px solid var(--sec);border-radius:10px;padding:10px 12px;margin:10px 0 6px;cursor:pointer;font:inherit;text-align:left}
 .mhead .ms{color:var(--mut);font-size:13px;font-variant-numeric:tabular-nums}
 #toast{position:fixed;left:50%;bottom:calc(80px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:9}
 #toast.on{opacity:1}
@@ -238,7 +245,7 @@ function chart(rows){
     s+=`<rect class="b2" x="${x+2+w+2}" y="${H-pb-h2}" width="${w}" height="${h2}" rx="2"><title>${esc(r.label)} · spese ${fmtE(r.correnti+r.annuali)}</title></rect>`;
     if(rows.length<=14||i%2===0) s+=`<text x="${x+bw/2}" y="${H-6}" text-anchor="middle">${r.label.slice(0,3)}</text>`;
   });
-  return s+'</svg><div class="note"><span style="color:var(--acc)">■</span> incasso &nbsp; <span style="color:var(--neg)">■</span> spese (correnti + annuali)</div>';
+  return s+'</svg><div class="note"><span style="color:var(--acc)">■</span> incasso &nbsp; <span style="color:var(--neg-f)">■</span> spese (correnti + annuali)</div>';
 }
 function vRiepilogo(){
   const S=stats(UI.anno);
@@ -496,11 +503,11 @@ function cmpChart(A,B,ra,rb){
   let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Incassi mensili ${A} contro ${B}">`;
   for(let i=0;i<12;i++){
     const x=pl+i*bw,w=Math.max(4,bw/2-3),h1=(H-pb-pt)*ra[i].v/mx,h2=(H-pb-pt)*rb[i].v/mx;
-    s+=`<rect x="${x+2}" y="${H-pb-h1}" width="${w}" height="${h1}" rx="2" style="fill:var(--mut);opacity:.55"><title>${MESI[i]} ${A} · ${fmtE(ra[i].v)}</title></rect>`;
+    s+=`<rect x="${x+2}" y="${H-pb-h1}" width="${w}" height="${h1}" rx="2" style="fill:var(--sec)"><title>${MESI[i]} ${A} · ${fmtE(ra[i].v)}</title></rect>`;
     if(rb[i].has)s+=`<rect class="b1" x="${x+2+w+2}" y="${H-pb-h2}" width="${w}" height="${h2}" rx="2"><title>${MESI[i]} ${B} · ${fmtE(rb[i].v)}</title></rect>`;
     s+=`<text x="${x+bw/2}" y="${H-6}" text-anchor="middle">${MESI[i].slice(0,3)}</text>`;
   }
-  return s+`</svg><div class="note"><span style="color:var(--mut)">■</span> ${A} &nbsp; <span style="color:var(--acc)">■</span> ${B}</div>`;
+  return s+`</svg><div class="note"><span style="color:var(--sec)">■</span> ${A} &nbsp; <span style="color:var(--acc)">■</span> ${B}</div>`;
 }
 function vConfronto(){
   const ys=cmpInit(),C=UI.cmp;
@@ -591,7 +598,7 @@ function closePanel(){
   <div class="tblwrap"><table class="tbl cards"><thead><tr><th>Voce</th><th>Categoria</th><th class="r">Ultimo importo</th><th class="r">Importo</th></tr></thead><tbody>
   ${st.map((s,i)=>s.hasHere
     ?`<tr><td data-label="Voce">${esc(s.x.desc)}</td><td data-label="Categoria">${esc(s.x.categoria)}</td><td class="r" data-label="Stato"><span class="pill">già registrata · ${fmtE(s.here)}</span></td><td></td></tr>`
-    :`<tr><td data-label="Voce">${esc(s.x.desc)}</td><td data-label="Categoria">${esc(s.x.categoria)}</td><td class="r" data-label="Ultimo importo">${s.prev?`<a href="#" data-act="fill-prev" data-i="${i}" style="color:var(--acc)">${fmtE(s.prev.v)}</a> <span class="mut">${MESI[+s.prev.ym.slice(5)-1].slice(0,3)}</span>`:'<span class="mut">—</span>'}</td><td class="r" data-label="Importo"><input type="text" inputmode="decimal" class="cm-in" data-k="${esc(s.k)}" value="${esc(C.vals[s.k]||'')}" placeholder="0,00" style="max-width:130px;text-align:right"></td></tr>`).join('')}
+    :`<tr><td data-label="Voce">${esc(s.x.desc)}</td><td data-label="Categoria">${esc(s.x.categoria)}</td><td class="r" data-label="Ultimo importo">${s.prev?`<a href="#" data-act="fill-prev" data-i="${i}" style="color:var(--acc-t)">${fmtE(s.prev.v)}</a> <span class="mut">${MESI[+s.prev.ym.slice(5)-1].slice(0,3)}</span>`:'<span class="mut">—</span>'}</td><td class="r" data-label="Importo"><input type="text" inputmode="decimal" class="cm-in" data-k="${esc(s.k)}" value="${esc(C.vals[s.k]||'')}" placeholder="0,00" style="max-width:130px;text-align:right"></td></tr>`).join('')}
   </tbody></table></div>
   <div class="row" style="margin-top:12px;justify-content:space-between"><div><span class="mut">Totale da salvare</span><div class="tot" id="cm_tot">${fmtE(closeTot())}</div></div>
   <div class="row"><button class="btn" data-act="close-save">Salva le voci compilate</button><button class="btn sec" data-act="close-cancel">Annulla</button></div></div>
