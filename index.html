@@ -84,6 +84,11 @@ svg .b1{fill:var(--acc)} svg .b2{fill:var(--neg-f);opacity:.85}
 html{-webkit-text-size-adjust:100%}
 button,a,input,select,label{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .mlist{display:none}
+.sub{display:block;font-size:11.5px;font-weight:400;color:var(--mut);line-height:1.25}
+.wk{display:flex;align-items:center;gap:8px}
+.wk .btn{min-width:42px;font-size:18px;padding:0}
+.wkl{font-variant-numeric:tabular-nums;font-weight:600;font-size:14px}
+.tbl .tsum tr:first-child td{border-top:2px solid var(--line)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .chip{border:1px solid var(--line);background:var(--panel2);color:var(--tx);border-radius:99px;padding:6px 13px;min-height:36px;font:inherit;font-size:14px;cursor:pointer}
 .chip.on{background:var(--acc);border-color:var(--acc);color:var(--acc-tx)}
@@ -245,7 +250,7 @@ const compet=t=>String(t.competenza||String(t.data).slice(0,4));
 
 /* ---------- stato UI ---------- */
 const UI={tab:'riepilogo',anno:String(new Date().getFullYear()),edit:{},
-  f:{inc:{da:'',a:'',ev:'',me:''},sp:{da:'',a:'',cat:'',ev:'',q:''}},lim:{inc:60,sp:60},fopen:{inc:false,sp:false},mo:{inc:{},sp:{}},cmp:{a:'',b:'',da:'',dt:''},open:{inc:false,sp:false},close:{open:false,ym:'',data:'',vals:{}}};
+  f:{inc:{da:'',a:'',ev:'',me:''},sp:{da:'',a:'',cat:'',ev:'',q:''}},lim:{inc:60,sp:60},fopen:{inc:false,sp:false},mo:{inc:{},sp:{}},cmp:{a:'',b:'',da:'',dt:'',wb:'',wa:''},open:{inc:false,sp:false},close:{open:false,ym:'',data:'',vals:{}}};
 const yearsPresent=()=>{const s=new Set();DB.incassi.concat(DB.spese,DB.annuali).forEach(r=>s.add(String(r.data).slice(0,4)));return Array.from(s).sort()};
 const inYear=iso=>UI.anno==='tutto'||String(iso).startsWith(UI.anno);
 
@@ -588,6 +593,7 @@ function cmpInit(){
   if(ys.length<2)return ys;
   if(!ys.includes(C.b))C.b=ys[ys.length-1];
   if(!ys.includes(C.a)||C.a===C.b)C.a=ys.filter(y=>y!==C.b).pop();
+  if(!C.wb)C.wb=weekDefault();
   if(!C.da||!C.dt||C.da.slice(0,4)!==C.b||C.dt.slice(0,4)!==C.b){const t=todayISO();C.da=C.b+'-01-01';C.dt=C.b===t.slice(0,4)?t:C.b+'-12-31'}
   return ys;
 }
@@ -605,6 +611,36 @@ function cmpChart(A,B,ra,rb){
     s+=`<rect x="${x+2}" y="${H-pb-h1}" width="${w}" height="${h1}" rx="2" style="fill:var(--sec)"><title>${MESI[i]} ${A} · ${fmtE(ra[i].v)}</title></rect>`;
     if(rb[i].has)s+=`<rect class="b1" x="${x+2+w+2}" y="${H-pb-h2}" width="${w}" height="${h2}" rx="2"><title>${MESI[i]} ${B} · ${fmtE(rb[i].v)}</title></rect>`;
     s+=`<text x="${x+bw/2}" y="${H-6}" text-anchor="middle">${MESI[i].slice(0,3)}</text>`;
+  }
+  return s+`</svg><div class="note"><span style="color:var(--sec)">■</span> ${A} &nbsp; <span style="color:var(--acc)">■</span> ${B}</div>`;
+}
+
+const isoD=d=>d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+const addDays=(iso,n)=>{const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return isoD(d)};
+const wdIdx=iso=>(new Date(iso+'T12:00:00').getDay()+6)%7;           // 0 = lunedì
+const mondayOf=iso=>addDays(iso,-wdIdx(iso));
+const nearMonday=iso=>{const k=wdIdx(iso);return addDays(iso,k<=3?-k:7-k)};
+const shortD=iso=>iso.slice(8,10)+'/'+iso.slice(5,7);
+function weekDefault(){
+  const t=todayISO(),B=UI.cmp.b;
+  if(B===t.slice(0,4))return addDays(mondayOf(t),-7);                // ultima settimana completa
+  const mx=DB.incassi.filter(r=>r.data.startsWith(B+'-')&&tot(r)>0).map(r=>r.data).sort().pop();
+  return mondayOf(mx||B+'-06-01');
+}
+function weekData(mon){
+  const days=[];
+  for(let i=0;i<7;i++){const date=addDays(mon,i),r=DB.incassi.find(x=>x.data===date);days.push({date,v:r?tot(r):0,meteo:r?r.meteo||'':'',ev:r?r.evento||'':''})}
+  const open=days.filter(d=>d.v>0),t=sum(days.map(d=>d.v));
+  return {days,t,ap:open.length,media:open.length?t/open.length:0,best:open.reduce((m,d)=>!m||d.v>m.v?d:m,null)};
+}
+function weekChart(A,B,wa,wb){
+  const W=720,H=190,pl=8,pb=22,pt=8,bw=(W-pl*2)/7,mx=Math.max(1,...wa.days.map(d=>d.v),...wb.days.map(d=>d.v));
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Incassi per giorno, settimana ${A} contro ${B}">`;
+  for(let i=0;i<7;i++){
+    const x=pl+i*bw,w=Math.max(6,bw/2-6),h1=(H-pb-pt)*wa.days[i].v/mx,h2=(H-pb-pt)*wb.days[i].v/mx;
+    s+=`<rect x="${x+4}" y="${H-pb-h1}" width="${w}" height="${h1}" rx="2" style="fill:var(--sec)"><title>${GGL[i]} ${shortD(wa.days[i].date)}/${A} · ${fmtE(wa.days[i].v)}</title></rect>`;
+    s+=`<rect class="b1" x="${x+4+w+3}" y="${H-pb-h2}" width="${w}" height="${h2}" rx="2"><title>${GGL[i]} ${shortD(wb.days[i].date)}/${B} · ${fmtE(wb.days[i].v)}</title></rect>`;
+    s+=`<text x="${x+bw/2}" y="${H-6}" text-anchor="middle">${GGL[i].slice(0,3)}</text>`;
   }
   return s+`</svg><div class="note"><span style="color:var(--sec)">■</span> ${A} &nbsp; <span style="color:var(--acc)">■</span> ${B}</div>`;
 }
@@ -645,11 +681,34 @@ function vConfronto(){
     const a=ra.length?sum(ra.map(tot))/ra.length:NaN,b=rb.length?sum(rb.map(tot))/rb.length:NaN,dv=(isFinite(a)&&isFinite(b)&&a)?(b-a)/a:NaN;
     return `<tr><td class="nolabel"><b>${GGL[i]}</b></td><td class="r" data-label="${A}">${isFinite(a)?fmtE(a)+' <span class="mut">('+ra.length+')</span>':'—'}</td><td class="r" data-label="${B}">${isFinite(b)?fmtE(b)+' <span class="mut">('+rb.length+')</span>':'—'}</td><td class="r ${!isFinite(dv)||dv===0?'':(dv>0?'pos':'neg')}" data-label="Variazione">${cmpPct(dv)}</td></tr>`};
   const head=`<thead><tr><th></th><th class="r">${A}</th><th class="r">${B}</th><th class="r">Var<span class="dsk">iazione</span><span class="mo">.</span></th></tr></thead>`;
+
+  // confronto settimane
+  const WB=C.wb,WA=C.wa||nearMonday(shiftY(WB,+A)),wA=weekData(WA),wB=weekData(WB);
+  const rng=m=>`${fmtD(m)} → ${fmtD(addDays(m,6))}`;
+  const wcell=x=>`${x.v>0?fmtE(x.v):'<span class="mut">chiuso</span>'}<span class="sub">${shortD(x.date)}${x.ev?' · '+esc(x.ev):''}${x.meteo?' · '+esc(x.meteo):''}</span>`;
+  const wdays=GGL.map((n,i)=>{const a=wA.days[i],b=wB.days[i],d=(a.v>0&&b.v>0)?(b.v-a.v)/a.v:NaN;
+    return `<tr><td class="nolabel"><b>${n.slice(0,3)}</b></td><td class="r">${wcell(a)}</td><td class="r">${wcell(b)}</td><td class="r ${!isFinite(d)||d===0?'':(d>0?'pos':'neg')}">${cmpPct(d)}</td></tr>`}).join('');
+  const bestL=w=>w.best?`${fmtE(w.best.v)}<span class="sub">${GGL[wdIdx(w.best.date)]}</span>`:'—';
+  const wsum=[
+    cmpRow('Incasso settimana',wA.t,wB.t,fmtE(wA.t),fmtE(wB.t),O()),
+    cmpRow('Giorni aperti',wA.ap,wB.ap,fmtI(wA.ap),fmtI(wB.ap),O()),
+    cmpRow('Media giornaliera',wA.media,wB.media,fmtE(wA.media),fmtE(wB.media),O()),
+    cmpRow('Miglior giorno',wA.best?wA.best.v:NaN,wB.best?wB.best.v:NaN,bestL(wA),bestL(wB),O())].join('');
+  const wk=(dir,act)=>`<button class="btn sec sm" data-act="${act}" data-d="${dir}" aria-label="${dir<0?'Settimana precedente':'Settimana successiva'}">${dir<0?'‹':'›'}</button>`;
+  const weekCard=`<div class="card"><h2>Confronto settimane</h2>
+    <p class="note" style="margin-top:0">Settimane da lunedì a domenica. Quella del ${A} si allinea da sola allo stesso periodo (stessi giorni della settimana) e la puoi spostare con le frecce.</p>
+    <div class="row" style="margin-bottom:8px"><div style="flex:2 1 260px"><label>Settimana del ${B}</label><div class="wk">${wk(-7,'cmp-wb')}<span class="wkl">${rng(WB)}</span>${wk(7,'cmp-wb')}</div></div>
+      <div><label for="cmp_wbd">Vai alla data</label><input type="date" id="cmp_wbd" data-cmp="wbd" value="${WB}"></div></div>
+    <div class="row" style="margin-bottom:10px"><div style="flex:2 1 260px"><label>Settimana del ${A}${C.wa?' (spostata a mano)':''}</label><div class="wk">${wk(-7,'cmp-wa')}<span class="wkl">${rng(WA)}</span>${wk(7,'cmp-wa')}</div></div>
+      ${C.wa?'<button class="btn sec sm" data-act="cmp-wa-auto">Riallinea</button>':''}</div>
+    ${weekChart(A,B,wA,wB)}
+    <div class="tblwrap"><table class="tbl cmpt"><thead><tr><th></th><th class="r">${A}<span class="sub">${shortD(WA)}–${shortD(addDays(WA,6))}</span></th><th class="r">${B}<span class="sub">${shortD(WB)}–${shortD(addDays(WB,6))}</span></th><th class="r">Var<span class="dsk">iazione</span><span class="mo">.</span></th></tr></thead><tbody>${wdays}</tbody><tbody class="tsum">${wsum}</tbody></table></div></div>`;
   const yopt=(sel)=>ys.map(y=>`<option${y===sel?' selected':''}>${y}</option>`).join('');
   return `<div class="card"><div class="row"><div><label for="cmp_a">Anno di confronto</label><select id="cmp_a" data-cmp="a" style="max-width:140px">${yopt(A)}</select></div><div><label for="cmp_b">Anno da valutare</label><select id="cmp_b" data-cmp="b" style="max-width:140px">${yopt(B)}</select></div></div></div>
   <div class="card"><h2>Confronto annuale ${A} · ${B}</h2><div class="tblwrap"><table class="tbl cmpt">${head}<tbody>${annual.join('')}</tbody></table></div>
     ${sB.aperti.length&&B===todayISO().slice(0,4)?`<div class="note" style="margin-top:6px">${B} è ancora in corso: per un confronto alla pari usa "Stesso periodo" più sotto.</div>`:''}</div>
   <div class="card"><h2>Incassi mensili ${A} · ${B}</h2>${cmpChart(A,B,ma,mb)}<div class="tblwrap"><table class="tbl cmpt">${head}<tbody>${monthly}</tbody></table></div></div>
+  ${weekCard}
   <div class="card"><h2>Stesso periodo</h2><p class="note" style="margin-top:0">Scegli un intervallo del ${B}: il ${A} viene confrontato negli stessi giorni (${fmtD(aFrom)} → ${fmtD(aTo)}).</p>
     <div class="row" style="margin-bottom:10px"><div><label for="cmp_da">Dal</label><input type="date" id="cmp_da" data-cmp="da" value="${C.da}" min="${B}-01-01" max="${B}-12-31"></div><div><label for="cmp_dt">Al</label><input type="date" id="cmp_dt" data-cmp="dt" value="${C.dt}" min="${B}-01-01" max="${B}-12-31"></div>
       <button class="btn sec sm" data-act="cmp-ytd">Da inizio anno a oggi</button><button class="btn sec sm" data-act="cmp-full">Anno intero</button></div>
@@ -945,6 +1004,9 @@ document.addEventListener('click',e=>{
     if(!confirm('Cambio il nome di '+rows.length+' spese da "'+from+'" a "'+to+'"?'))return;
     rows.forEach(r=>{r.desc=to});saveDB();render();toast(rows.length+' spese unite in "'+to+'"');
   }
+  else if(a==='cmp-wb'){UI.cmp.wb=addDays(UI.cmp.wb,+t.dataset.d);UI.cmp.wa='';render()}
+  else if(a==='cmp-wa'){const base=UI.cmp.wa||nearMonday(shiftY(UI.cmp.wb,+UI.cmp.a));UI.cmp.wa=addDays(base,+t.dataset.d);render()}
+  else if(a==='cmp-wa-auto'){UI.cmp.wa='';render()}
   else if(a==='cmp-ytd'){const t0=todayISO(),y=UI.cmp.b;UI.cmp.da=y+'-01-01';UI.cmp.dt=y===t0.slice(0,4)?t0:y+'-12-31';render()}
   else if(a==='cmp-full'){UI.cmp.da=UI.cmp.b+'-01-01';UI.cmp.dt=UI.cmp.b+'-12-31';render()}
   else if(a==='pick-sup'){const n=t.dataset.name;$('#s_desc').value=n;const last=DB.spese.filter(r=>keyD(r.desc)===keyD(n)).sort((x,y)=>y.data.localeCompare(x.data))[0];if(last&&!UI.edit.sp)$('#s_cat').value=last.categoria;renderSupChips();$('#s_imp').focus()}
@@ -985,7 +1047,8 @@ document.addEventListener('change',e=>{
   }
   if(t.dataset.cmp){
     const C=UI.cmp,k=t.dataset.cmp;
-    if(k==='a'||k==='b'){C[k]=t.value;C.da='';C.dt=''}
+    if(k==='wbd'){C.wb=mondayOf(t.value||todayISO());C.wa='';render();return}
+    if(k==='a'||k==='b'){C[k]=t.value;C.da='';C.dt='';C.wb='';C.wa=''}
     else{let v=t.value;if(!v||v.slice(0,4)!==C.b)v=k==='da'?C.b+'-01-01':C.b+'-12-31';C[k]=v;if(C.da>C.dt){if(k==='da')C.dt=C.da;else C.da=C.dt}}
     render();return;
   }
