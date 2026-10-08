@@ -274,15 +274,24 @@ function stats(y){
     prime:incasso?(mp+pers)/incasso:NaN,ebitda:incasso?utile/incasso:NaN,dopoTasse:utile-tasse,
     fissi,be,beDay:aperti.length?be/aperti.length:NaN};
 }
+const annYear=y=>sum(DB.annuali.filter(r=>String(r.data).slice(0,4)===String(y)).map(r=>r.importo));
+function annShare(from,to){
+  let t=0;const a=new Date(from+'T12:00:00'),b=new Date(to+'T12:00:00');
+  for(let y=a.getFullYear();y<=b.getFullYear();y++){const q=annYear(y)/12;if(!q)continue;
+    for(let m=0;m<12;m++){const ms=new Date(y,m,1,12),me=new Date(y,m+1,0,12),dim=me.getDate();
+      const s0=ms>a?ms:a,e0=me<b?me:b;if(e0<s0)continue;
+      t+=q*(Math.round((e0-s0)/864e5)+1)/dim}}
+  return t;
+}
 function monthRows(y){
   const years=y==='tutto'?yearsPresent():[y], out=[];
   years.forEach(yy=>{
     const rows=[];
     for(let m=1;m<=12;m++){
       const p=yy+'-'+String(m).padStart(2,'0');
-      const inc=DB.incassi.filter(r=>r.data.startsWith(p)), sp=DB.spese.filter(r=>r.data.startsWith(p)), an=DB.annuali.filter(r=>r.data.startsWith(p));
+      const inc=DB.incassi.filter(r=>r.data.startsWith(p)), sp=DB.spese.filter(r=>r.data.startsWith(p)), an=[];
       rows.push({p,label:MESI[m-1]+' '+yy,incasso:sum(inc.map(tot)),ap:inc.filter(r=>tot(r)>0).length,
-        correnti:sum(sp.map(r=>r.importo)),annuali:sum(an.map(r=>r.importo)),
+        correnti:sum(sp.map(r=>r.importo)),annuali:annYear(yy)/12,
         mp:sum(sp.filter(r=>r.categoria==='Materie Prime').map(r=>r.importo)),has:inc.length+sp.length+an.length>0});
     }
     const idx=rows.map((r,i)=>r.has?i:-1).filter(i=>i>=0);
@@ -348,7 +357,7 @@ function vRiepilogo(){
   const monthTbl=`<div class="card"><h2>Mese per mese</h2>${chart(mr)}
     <div class="tblwrap"><table class="tbl wide"><thead><tr><th>Mese</th><th class="r">Incasso</th><th class="r">Spese correnti</th><th class="r">Annuali</th><th class="r">Utile</th><th class="r">Aperture</th><th class="r">Media/g</th><th class="r">Food</th></tr></thead><tbody>
     ${mr.map(r=>{const u=r.incasso-r.correnti-r.annuali;return `<tr><td data-label="Mese">${esc(r.label)}</td><td class="r" data-label="Incasso">${fmtE(r.incasso)}</td><td class="r" data-label="Spese correnti">${fmtE(r.correnti)}</td><td class="r" data-label="Annuali">${r.annuali?fmtE(r.annuali):''}</td><td class="r ${u>=0?'pos':'neg'}" data-label="Utile">${fmtE(u)}</td><td class="r" data-label="Aperture">${r.ap}</td><td class="r" data-label="Media/g">${r.ap?fmtE(r.incasso/r.ap):'—'}</td><td class="r" data-label="Food">${r.incasso?pct(r.mp/r.incasso):'—'}</td></tr>`}).join('')}
-    </tbody></table></div><div class="note" style="margin-top:6px">Gli annuali compaiono nel mese in cui li hai pagati.</div></div>`;
+    </tbody></table></div><div class="note" style="margin-top:6px">Le spese annuali sono spalmate in dodicesimi: ogni mese ne porta 1/12 del totale dell'anno.</div></div>`;
   // giorni settimana
   const wd=[1,2,3,4,5,6,0].map((d,i)=>{const rs=S.inc.filter(r=>tot(r)>0&&dow(r.data)===d);return {n:GGL[i],k:rs.length,t:sum(rs.map(tot))}});
   const mxw=Math.max(1,...wd.map(w=>w.k?w.t/w.k:0));
@@ -580,10 +589,10 @@ const pad2=n=>String(n).padStart(2,'0');
 function shiftY(iso,y){const md=iso.slice(5);const leap=(y%4===0&&y%100!==0)||y%400===0;return y+'-'+(md==='02-29'&&!leap?'02-28':md)}
 function periodStats(from,to){
   const inR=d=>d>=from&&d<=to;
-  const inc=DB.incassi.filter(r=>inR(r.data)),sp=DB.spese.filter(r=>inR(r.data)),an=DB.annuali.filter(r=>inR(r.data));
+  const inc=DB.incassi.filter(r=>inR(r.data)),sp=DB.spese.filter(r=>inR(r.data));
   const incasso=sum(inc.map(tot)),aperti=inc.filter(r=>tot(r)>0);
   const mp=sum(sp.filter(r=>r.categoria==='Materie Prime').map(r=>r.importo));
-  const spese=sum(sp.map(r=>r.importo))+sum(an.map(r=>r.importo)),utile=incasso-spese;
+  const spese=sum(sp.map(r=>r.importo))+annShare(from,to),utile=incasso-spese;
   return {incasso,spese,utile,ap:aperti.length,media:aperti.length?incasso/aperti.length:0,
     food:incasso?mp/incasso:NaN,ebitda:incasso?utile/incasso:NaN,aperti,
     best:aperti.reduce((m,r)=>!m||tot(r)>tot(m)?r:m,null),worst:aperti.reduce((m,r)=>!m||tot(r)<tot(m)?r:m,null)};
