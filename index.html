@@ -188,7 +188,7 @@ button,a,input,select,label{touch-action:manipulation;-webkit-tap-highlight-colo
   <main id="view"></main>
 </div>
 <div id="backdrop" data-act="sheet-close"></div>
-<div id="quick"><button class="btn" data-quick="inc">+ Incasso</button><button class="btn sec" data-quick="sp">+ Spesa</button></div>
+<div id="quick"><button class="btn" data-quick="inc">+ Incasso</button><button class="btn sec" data-quick="sp">+ Spesa</button><button class="btn sec" data-quick="dep">+ Deposito</button></div>
 <div id="toast" role="status"></div>
 
 <script>
@@ -329,12 +329,7 @@ function cassaCard(){
   ${C.mesi.length?`<div class="tblwrap" style="margin-top:8px"><table class="tbl wide"><thead><tr><th>Mese</th><th class="r">Incassi contanti</th><th class="r">Spese contanti</th><th class="r">Depositi</th><th class="r">Prelievi contanti</th><th class="r">Bonifico</th></tr></thead><tbody>${C.mesi.map(m=>`<tr><td data-label="Mese">${labelYM(m.ym)}</td><td class="r" data-label="Incassi contanti">${fmtE(m.ci)}</td><td class="r" data-label="Spese contanti">${fmtE(m.sc)}</td><td class="r" data-label="Depositi">${fmtE(m.dp)}</td><td class="r" data-label="Prelievi contanti"><b>${fmtE(m.pr)}</b>${m.c0?` <span class="mut">(con ${fmtE(m.c0)} iniziali)</span>`:''}</td><td class="r" data-label="Bonifico">${m.bo?fmtE(m.bo):'—'}</td></tr>`).join('')}</tbody></table></div>`:''}
   ${C.pend?`<div class="note">Addebiti in arrivo: ${Object.keys(C.pendBy).sort().map(d=>fmtD(d)+' · '+fmtE(C.pendBy[d])).join(' — ')}</div>`:''}
   ${C.senza?`<div class="note">${C.senza} spese dopo la data zero senza metodo scelto: le conto con il predefinito (o elettroniche).</div>`:''}
-  <h3 style="margin-top:12px">${ed?'Modifica deposito':'Versa contanti in banca'}</h3>
-  <form id="depForm" autocomplete="off"><div class="grid g3">
-    <div><label for="d_data">Data</label><input type="date" id="d_data" value="${esc(ed?ed.data:todayISO())}" required></div>
-    <div><label for="d_imp">Importo (€)</label><input type="text" inputmode="decimal" id="d_imp" value="${ed?esc(String(ed.importo).replace('.',',')):''}" placeholder="0,00" required></div>
-    <div><label for="d_nota">Nota</label><input type="text" id="d_nota" value="${esc(ed?ed.nota||'':'')}"></div></div>
-    <div class="row" style="margin-top:10px"><button class="btn" type="submit">${ed?'Aggiorna deposito':'Registra deposito'}</button>${ed?'<button class="btn sec" type="button" data-act="dep-cancel">Annulla</button>':''}</div></form>
+  <h3 style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:10px">Depositi in banca <button class="btn sec sm" data-quick="dep">+ Deposito</button></h3>
   ${deps.length?`<div class="tblwrap" style="margin-top:8px"><table class="tbl cards"><tbody>${deps.map(x=>`<tr class="${UI.edit.dep===x.id?'edit':''}"><td data-label="Data">${fmtD(x.data)}</td><td class="r" data-label="Importo"><b>${fmtE(x.importo)}</b></td><td data-label="Nota">${esc(x.nota||'')}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-dep" data-id="${x.id}">Modifica</button> <button class="btn danger sm" data-act="del-dep" data-id="${x.id}">Elimina</button></td></tr>`).join('')}</tbody></table></div>`:''}
   ${chkBlock(C)}
   <details style="margin-top:10px"><summary class="mut" style="cursor:pointer">Cambia data zero o saldo iniziale</summary><div style="margin-top:8px">${bform}</div></details>
@@ -379,13 +374,22 @@ function saveBanca(ev){
   DB.setup.banca={data0:d,saldo0:r2(numParse(sv))||0,cassa0:r2(numParse($('#b_cassa').value))||0,bonImp:r2(numParse($('#b_bon').value))||0,bonGiorno:Math.min(31,Math.max(1,parseInt($('#b_gg').value,10)||15))};
   saveDB();render();toast('Data zero salvata');
 }
+function depSheet(){
+  const ed=UI.edit.dep?DB.depositi.find(x=>x.id===UI.edit.dep):null;
+  return `<div class="card sheet"><button class="sheet-x" data-act="sheet-close" aria-label="Chiudi" type="button">✕</button><h2>${ed?'Modifica deposito':'Versa contanti in banca'}</h2>
+  <form id="depForm" autocomplete="off"><div class="grid g3">
+    <div><label for="d_data">Data</label><input type="date" id="d_data" value="${esc(ed?ed.data:todayISO())}" required></div>
+    <div><label for="d_imp">Importo (€)</label><input type="text" inputmode="decimal" id="d_imp" value="${ed?esc(String(ed.importo).replace('.',',')):''}" placeholder="0,00" required></div>
+    <div><label for="d_nota">Nota</label><input type="text" id="d_nota" value="${esc(ed?ed.nota||'':'')}"></div></div>
+    <div class="row" style="margin-top:12px"><button class="btn" type="submit">${ed?'Aggiorna deposito':'Registra deposito'}</button><button class="btn sec" type="button" data-act="dep-cancel">Annulla</button></div></form></div>`;
+}
 function saveDep(ev){
   ev.preventDefault();
   const rec={data:$('#d_data').value,importo:r2(numParse($('#d_imp').value)),nota:$('#d_nota').value.trim()};
   if(!rec.data||!rec.importo){toast('Servono data e importo');return}
   const ex=UI.edit.dep?DB.depositi.find(x=>x.id===UI.edit.dep):null;
   if(ex)Object.assign(ex,rec);else DB.depositi.push(Object.assign({id:uid('de')},rec));
-  saveDB();UI.edit.dep=null;render();toast('Deposito salvato');
+  saveDB();UI.edit.dep=null;UI.open.dep=false;render();toast('Deposito salvato');
 }
 
 /* ---------- stato UI ---------- */
@@ -522,7 +526,7 @@ function vRiepilogo(){
       <span class="mut">Incasso minimo al giorno (${S.aperti} giorni)</span><b style="text-align:right">${fmtE(S.beDay)}</b>
       <span class="mut">Pezzi al giorno (prezzo medio ${fmtE(prezzo)})</span><b style="text-align:right">${isFinite(pezzi)?pezzi:'—'}</b>
     </div><div class="note" style="margin-top:6px">Calcolo: costi fissi / (1 − food cost). Il prezzo medio si cambia in Setup.</div></div>`;
-  return cassaCard()+kp+monthTbl+`<div class="cols2">${wdCard}${pay}</div><div class="cols2">${catC}${fC}</div>${beC}`;
+  return (UI.open.dep?depSheet():'')+cassaCard()+kp+monthTbl+`<div class="cols2">${wdCard}${pay}</div><div class="cols2">${catC}${fC}</div>${beC}`;
 }
 
 /* ---------- form helper ---------- */
@@ -1126,11 +1130,13 @@ document.addEventListener('click',e=>{
   const t=e.target.closest('[data-anno],[data-tab],[data-go],[data-act],[data-quick]'); if(!t)return;
   if(t.dataset.quick){
     if(t.dataset.quick==='inc'){const ex=DB.incassi.find(r=>r.data===todayISO());UI.edit.inc=ex?ex.id:null;UI.open.inc=true;UI.tab='incassi';render();toTop();const c=$('#i_c');c.focus();c.select()}
+    else if(t.dataset.quick==='dep'){if(!data0()){UI.tab='riepilogo';render();toTop();toast('Imposta prima la data zero qui sotto');return}
+      UI.edit.dep=null;UI.open.dep=true;UI.tab='riepilogo';render();toTop();const c=$('#d_imp');if(c)c.focus()}
     else{UI.edit.sp=null;UI.open.sp=true;UI.tab='spese';render();toTop();$('#s_desc').focus()}
     return;
   }
   if(t.dataset.anno){UI.anno=t.dataset.anno;UI.lim={inc:60,sp:60};render();return}
-  if(t.dataset.tab){UI.tab=t.dataset.tab;UI.close={open:false,ym:'',data:'',vals:{}};UI.open={inc:false,sp:false};UI.edit.inc=null;UI.edit.sp=null;render();window.scrollTo(0,0);return}
+  if(t.dataset.tab){UI.tab=t.dataset.tab;UI.close={open:false,ym:'',data:'',vals:{}};UI.open={inc:false,sp:false,dep:false};UI.edit.inc=null;UI.edit.sp=null;UI.edit.dep=null;render();window.scrollTo(0,0);return}
   if(t.dataset.go){e.preventDefault();UI.tab=t.dataset.go;render();return}
   const a=t.dataset.act,id=t.dataset.id;
   if(a==='edit-inc'){UI.edit.inc=id;UI.open.inc=true;render();toTop()}
@@ -1176,10 +1182,10 @@ document.addEventListener('click',e=>{
   else if(a==='add-preset'){const v=$('#new_preset').value.trim();if(!v){toast('Scrivi la voce');return}const pg=$('#new_preset_pag').value,L=DB.setup.presetPag,ex=L.find(x=>keyD(x.k)===keyD(v));if(ex)ex.pag=pg;else L.push({k:v,pag:pg});saveDB();render();toast('Regola salvata')}
   else if(a==='rm-preset'){DB.setup.presetPag.splice(+t.dataset.i,1);saveDB();render()}
   else if(a==='del-chk'){const r=DB.controlli.find(x=>x.id===id);if(r&&confirm('Elimino il controllo del '+fmtD(r.data)+'?')){DB.controlli=DB.controlli.filter(x=>x.id!==id);saveDB();render()}}
-  else if(a==='edit-dep'){UI.edit.dep=id;render()}
-  else if(a==='dep-cancel'){UI.edit.dep=null;render()}
+  else if(a==='edit-dep'){UI.edit.dep=id;UI.open.dep=true;render();toTop()}
+  else if(a==='dep-cancel'){UI.edit.dep=null;UI.open.dep=false;render()}
   else if(a==='del-dep'){const r=DB.depositi.find(x=>x.id===id);if(r&&confirm('Elimino il deposito del '+fmtD(r.data)+'?')){DB.depositi=DB.depositi.filter(x=>x.id!==id);if(UI.edit.dep===id)UI.edit.dep=null;saveDB();render();toast('Eliminato')}}
-  else if(a==='sheet-close'){UI.open={inc:false,sp:false};UI.edit.inc=null;UI.edit.sp=null;UI.close={open:false,ym:'',data:'',vals:{}};render()}
+  else if(a==='sheet-close'){UI.open={inc:false,sp:false,dep:false};UI.edit.inc=null;UI.edit.sp=null;UI.edit.dep=null;UI.close={open:false,ym:'',data:'',vals:{}};render()}
   else if(a==='sy-login'){syLogin()}
   else if(a==='sy-now'){doSync().then(()=>{if(UI.tab==='setup')render()})}
   else if(a==='sy-logout'){if(confirm('Esco dalla sincronizzazione? I dati restano su questo dispositivo.')){AUTH=null;TOK={id:'',exp:0};try{localStorage.removeItem(AUTH_KEY);localStorage.removeItem(SYNC_KEY)}catch(e){}SY={pull:-1,push:0,at:0};setSync('off');render()}}
