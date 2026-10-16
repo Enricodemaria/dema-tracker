@@ -227,21 +227,21 @@ const DEF_SETUP={prezzoMedio:5.5,
   categorie:['Materie Prime','Personale','Bollette','Oneri Bancari','Pubblicità','Affitto','Altro','Eventi'],
   eventi:['Dopo Sole','Evento speciale','Sagra/festa locale','Chiusura anticipata','Ferie','Chiusura straordinaria'],
   meteo:['Brutto'],ricorrenti:RIC0,presetPag:[],presetCat:{},banca:{data0:'',saldo0:0,cassa0:0}};
-const emptyDB=()=>({app:'dema-tracker',versione:1,incassi:[],spese:[],annuali:[],tasse:[],depositi:[],tombs:[],setup:JSON.parse(JSON.stringify(DEF_SETUP))});
+const emptyDB=()=>({app:'dema-tracker',versione:1,incassi:[],spese:[],annuali:[],tasse:[],depositi:[],controlli:[],tombs:[],setup:JSON.parse(JSON.stringify(DEF_SETUP))});
 function norm(d){
   const b=emptyDB();
-  ['incassi','spese','annuali','tasse','depositi'].forEach(k=>{b[k]=Array.isArray(d&&d[k])?d[k]:[]});
+  ['incassi','spese','annuali','tasse','depositi','controlli'].forEach(k=>{b[k]=Array.isArray(d&&d[k])?d[k]:[]});
   b.tombs=Array.isArray(d&&d.tombs)?d.tombs:[];
   b.setup=Object.assign(b.setup,(d&&d.setup)||{});
   if(!Array.isArray(b.setup.ricorrenti))b.setup.ricorrenti=JSON.parse(JSON.stringify(RIC0));
-  ['incassi','spese','annuali','tasse','depositi'].forEach(k=>b[k].forEach(r=>{if(!r.id)r.id=uid(k.slice(0,2))}));
+  ['incassi','spese','annuali','tasse','depositi','controlli'].forEach(k=>b[k].forEach(r=>{if(!r.id)r.id=uid(k.slice(0,2))}));
   return b;
 }
 function loadDB(){try{const raw=localStorage.getItem(KEY);if(raw)return norm(JSON.parse(raw))}catch(e){}return emptyDB()}
 let DB=loadDB();
 try{if(!localStorage.getItem(KEY))localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){}
 let SIG={},SETUP_SIG='';
-const COLS=['incassi','spese','annuali','tasse','depositi'];
+const COLS=['incassi','spese','annuali','tasse','depositi','controlli'];
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){toast('Salvataggio locale non riuscito: esporta un backup')}}
 function saveDB(){stamp();persist();scheduleSync()}
 
@@ -280,16 +280,16 @@ function debitDate(r){
   const a=String(r.data).slice(0,7).split('-').map(Number),d=new Date(a[0],a[1]+1,0);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
-function cassaCalc(){
+function cassaCalc(asOf){
   const b=DB.setup.banca||{};if(!b.data0)return null;
-  const d0=b.data0,af=d=>d>d0,oggi=todayISO();
+  const d0=b.data0,oggi=asOf||todayISO(),le=d=>!asOf||d<=asOf,af=d=>d>d0&&le(d);
   const inc=DB.incassi.filter(r=>af(r.data));
   const posIn=sum(inc.map(r=>(r.pos||0)+(r.satispay||0))),cashIn=sum(inc.map(r=>r.contanti||0));
   const pool=DB.spese.concat(DB.annuali);
   const cashRows=pool.filter(r=>af(r.data));                 // i contanti escono il giorno della spesa
   const spC=sum(cashRows.map(splitOf));
   let spE=0,pend=0;const pendBy={};
-  pool.forEach(r=>{const dd=debitDate(r);if(!af(dd))return;const e=r.importo-splitOf(r);
+  pool.forEach(r=>{const dd=debitDate(r);if(!(dd>d0)||!le(r.data))return;const e=r.importo-splitOf(r);
     if(dd<=oggi)spE+=e;else{pend+=e;pendBy[dd]=(pendBy[dd]||0)+e}});   // le RIBA escono dalla banca alla data di addebito
   const tx=sum(DB.tasse.filter(t=>af(t.data)&&t.importo!=null).map(t=>t.importo));
   const dep=sum(DB.depositi.filter(x=>af(x.data)).map(x=>x.importo));
@@ -336,8 +336,33 @@ function cassaCard(){
     <div><label for="d_nota">Nota</label><input type="text" id="d_nota" value="${esc(ed?ed.nota||'':'')}"></div></div>
     <div class="row" style="margin-top:10px"><button class="btn" type="submit">${ed?'Aggiorna deposito':'Registra deposito'}</button>${ed?'<button class="btn sec" type="button" data-act="dep-cancel">Annulla</button>':''}</div></form>
   ${deps.length?`<div class="tblwrap" style="margin-top:8px"><table class="tbl cards"><tbody>${deps.map(x=>`<tr class="${UI.edit.dep===x.id?'edit':''}"><td data-label="Data">${fmtD(x.data)}</td><td class="r" data-label="Importo"><b>${fmtE(x.importo)}</b></td><td data-label="Nota">${esc(x.nota||'')}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-dep" data-id="${x.id}">Modifica</button> <button class="btn danger sm" data-act="del-dep" data-id="${x.id}">Elimina</button></td></tr>`).join('')}</tbody></table></div>`:''}
+  ${chkBlock(C)}
   <details style="margin-top:10px"><summary class="mut" style="cursor:pointer">Cambia data zero o saldo iniziale</summary><div style="margin-top:8px">${bform}</div></details>
   <div class="note" style="margin-top:6px">Conto dalla data zero in poi (esclusa): POS e Satispay entrano in banca, i contanti che non spendi né depositi li considero prelevati da te (la cassa ha una cifra fissa). Spese e annuali contano alla data in cui le hai pagate; le RIBA escono dalla banca a fine mese successivo.</div></div>`;
+}
+function chkBlock(C){
+  const L=DB.controlli.slice().sort((a,b)=>a.data.localeCompare(b.data));
+  const rows=L.map((x,i)=>({x,dv:i?x.diff-L[i-1].diff:null})).reverse().slice(0,6);
+  const last=L[L.length-1],gg=last?Math.round((new Date(todayISO()+'T12:00:00')-new Date(last.data+'T12:00:00'))/864e5):null;
+  const cl=v=>Math.abs(v)<1?'':(v>0?'pos':'neg');
+  return `<h3 style="margin-top:14px">Controllo saldo con la banca</h3>
+  <p class="note" style="margin:0 0 8px">Scrivi il saldo contabile che vedi in banca: ti dico di quanto si discosta dal tracker. ${last?`Ultimo controllo ${gg===0?'oggi':gg+' giorni fa'}.`:'Ripetilo una volta al mese per vedere se lo scostamento cresce.'}</p>
+  <form id="chkForm" autocomplete="off"><div class="grid g3">
+    <div><label for="k_data">Data del saldo</label><input type="date" id="k_data" value="${todayISO()}" required></div>
+    <div><label for="k_imp">Saldo reale in banca (€)</label><input type="text" inputmode="decimal" id="k_imp" placeholder="0,00" required></div>
+    <div style="align-self:end"><button class="btn" type="submit">Registra controllo</button></div></div></form>
+  ${rows.length?`<div class="tblwrap" style="margin-top:8px"><table class="tbl wide"><thead><tr><th>Data</th><th class="r">Banca</th><th class="r">Tracker</th><th class="r">Scostamento</th><th class="r">Variazione</th><th></th></tr></thead><tbody>${rows.map(({x,dv})=>`<tr><td data-label="Data">${fmtD(x.data)}</td><td class="r" data-label="Banca">${fmtE(x.reale)}</td><td class="r" data-label="Tracker">${fmtE(x.app)}</td><td class="r ${cl(x.diff)}" data-label="Scostamento"><b>${x.diff>0?'+':''}${fmtE(x.diff)}</b></td><td class="r ${dv==null?'':cl(dv)}" data-label="Variazione">${dv==null?'—':(dv>0?'+':'')+fmtE(dv)}</td><td class="r nolabel"><button class="btn danger sm" data-act="del-chk" data-id="${x.id}">Elimina</button></td></tr>`).join('')}</tbody></table></div><div class="note" style="margin-top:6px">Scostamento = banca − tracker (positivo: in banca hai più di quanto calcola il tracker). La variazione è rispetto al controllo precedente: se cresce nel tempo, manca qualcosa da registrare.</div>`:''}`;
+}
+function saveChk(ev){
+  ev.preventDefault();
+  const data=$('#k_data').value,v=$('#k_imp').value.trim();
+  if(!data||v===''){toast('Servono data e saldo');return}
+  const b=DB.setup.banca||{};
+  if(!b.data0||data<=b.data0){toast('La data deve essere dopo la data zero ('+fmtD(b.data0||'')+')');return}
+  const C=cassaCalc(data),reale=r2(numParse(v)),app=r2(C.banca);
+  const ex=DB.controlli.find(x=>x.data===data),rec={data,reale,app,diff:r2(reale-app)};
+  if(ex)Object.assign(ex,rec);else DB.controlli.push(Object.assign({id:uid('ch')},rec));
+  saveDB();render();toast('Scostamento '+(rec.diff>0?'+':'')+fmtE(rec.diff))
 }
 function presetCard(){
   const L=DB.setup.presetPag||[],PC=DB.setup.presetCat||{};
@@ -942,7 +967,7 @@ function importFile(file,mode){
       DB=n;
     }else{
       let add=0;
-      ['incassi','spese','annuali','tasse','depositi'].forEach(k=>{
+      ['incassi','spese','annuali','tasse','depositi','controlli'].forEach(k=>{
         const ids=new Set(DB[k].map(r=>r.id));
         const dates=k==='incassi'?new Set(DB.incassi.map(r=>r.data)):null;
         n[k].forEach(r=>{if(ids.has(r.id)||(dates&&dates.has(r.data)))return;DB[k].push(r);add++});
@@ -1150,6 +1175,7 @@ document.addEventListener('click',e=>{
   else if(a==='close-pag'){const s=ricStatus(UI.close.ym).find(x=>x.k===t.dataset.k);if(s){UI.close.pag=UI.close.pag||{};UI.close.pag[s.k]={e:'c',c:'m',m:'r',r:'e'}[closePag(s)];render()}}
   else if(a==='add-preset'){const v=$('#new_preset').value.trim();if(!v){toast('Scrivi la voce');return}const pg=$('#new_preset_pag').value,L=DB.setup.presetPag,ex=L.find(x=>keyD(x.k)===keyD(v));if(ex)ex.pag=pg;else L.push({k:v,pag:pg});saveDB();render();toast('Regola salvata')}
   else if(a==='rm-preset'){DB.setup.presetPag.splice(+t.dataset.i,1);saveDB();render()}
+  else if(a==='del-chk'){const r=DB.controlli.find(x=>x.id===id);if(r&&confirm('Elimino il controllo del '+fmtD(r.data)+'?')){DB.controlli=DB.controlli.filter(x=>x.id!==id);saveDB();render()}}
   else if(a==='edit-dep'){UI.edit.dep=id;render()}
   else if(a==='dep-cancel'){UI.edit.dep=null;render()}
   else if(a==='del-dep'){const r=DB.depositi.find(x=>x.id===id);if(r&&confirm('Elimino il deposito del '+fmtD(r.data)+'?')){DB.depositi=DB.depositi.filter(x=>x.id!==id);if(UI.edit.dep===id)UI.edit.dep=null;saveDB();render();toast('Eliminato')}}
@@ -1167,7 +1193,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.classList&&d.classList.contains('fdet')&&isMob())UI.fopen[d.dataset.k]=d.open},true);
 document.addEventListener('submit',e=>{
-  const id=e.target.id; if(id==='incForm')saveInc(e);else if(id==='spForm')saveSp(e);else if(id==='anForm')saveAn(e);else if(id==='txForm')saveTx(e);else if(id==='bancaForm')saveBanca(e);else if(id==='depForm')saveDep(e);
+  const id=e.target.id; if(id==='incForm')saveInc(e);else if(id==='spForm')saveSp(e);else if(id==='anForm')saveAn(e);else if(id==='txForm')saveTx(e);else if(id==='bancaForm')saveBanca(e);else if(id==='depForm')saveDep(e);else if(id==='chkForm')saveChk(e);
 });
 document.addEventListener('input',e=>{
   const t=e.target;
