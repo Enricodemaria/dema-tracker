@@ -226,27 +226,109 @@ const RIC0=[];
 const DEF_SETUP={prezzoMedio:5.5,
   categorie:['Materie Prime','Personale','Bollette','Oneri Bancari','Pubblicità','Affitto','Altro','Eventi'],
   eventi:['Dopo Sole','Evento speciale','Sagra/festa locale','Chiusura anticipata','Ferie','Chiusura straordinaria'],
-  meteo:['Brutto'],ricorrenti:RIC0};
-const emptyDB=()=>({app:'dema-tracker',versione:1,incassi:[],spese:[],annuali:[],tasse:[],tombs:[],setup:JSON.parse(JSON.stringify(DEF_SETUP))});
+  meteo:['Brutto'],ricorrenti:RIC0,presetPag:[],presetCat:{},banca:{data0:'',saldo0:0,cassa0:0}};
+const emptyDB=()=>({app:'dema-tracker',versione:1,incassi:[],spese:[],annuali:[],tasse:[],depositi:[],tombs:[],setup:JSON.parse(JSON.stringify(DEF_SETUP))});
 function norm(d){
   const b=emptyDB();
-  ['incassi','spese','annuali','tasse'].forEach(k=>{b[k]=Array.isArray(d&&d[k])?d[k]:[]});
+  ['incassi','spese','annuali','tasse','depositi'].forEach(k=>{b[k]=Array.isArray(d&&d[k])?d[k]:[]});
   b.tombs=Array.isArray(d&&d.tombs)?d.tombs:[];
   b.setup=Object.assign(b.setup,(d&&d.setup)||{});
   if(!Array.isArray(b.setup.ricorrenti))b.setup.ricorrenti=JSON.parse(JSON.stringify(RIC0));
-  ['incassi','spese','annuali','tasse'].forEach(k=>b[k].forEach(r=>{if(!r.id)r.id=uid(k.slice(0,2))}));
+  ['incassi','spese','annuali','tasse','depositi'].forEach(k=>b[k].forEach(r=>{if(!r.id)r.id=uid(k.slice(0,2))}));
   return b;
 }
 function loadDB(){try{const raw=localStorage.getItem(KEY);if(raw)return norm(JSON.parse(raw))}catch(e){}return emptyDB()}
 let DB=loadDB();
 try{if(!localStorage.getItem(KEY))localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){}
 let SIG={},SETUP_SIG='';
-const COLS=['incassi','spese','annuali','tasse'];
+const COLS=['incassi','spese','annuali','tasse','depositi'];
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){toast('Salvataggio locale non riuscito: esporta un backup')}}
 function saveDB(){stamp();persist();scheduleSync()}
 
 const tot=r=>(r.contanti||0)+(r.pos||0)+(r.satispay||0);
 const compet=t=>String(t.competenza||String(t.data).slice(0,4));
+
+/* ---------- modalità di pagamento delle spese + cassa/banca ---------- */
+function presetFor(desc,cat){
+  const k=keyD(desc);let best=null;
+  (DB.setup.presetPag||[]).forEach(p=>{const pk=keyD(p.k);if(pk&&k.includes(pk)&&(!best||pk.length>keyD(best.k).length))best=p});
+  if(best)return best.pag;
+  return ((DB.setup.presetCat||{})[cat])||'';
+}
+const payOf=r=>r.pag||presetFor(r.desc,r.categoria)||'e';
+const data0=()=>(DB.setup.banca&&DB.setup.banca.data0)||'';
+const pagShow=r=>r.pag||(data0()&&r.data>data0()?payOf(r):'');
+const pagPill=r=>{const v=pagShow(r);return v?`<span class="pill">${v==='c'?'Contanti':'Elettr.'}</span>`:''};
+function suggestPag(desc,cat){
+  const pr=presetFor(desc,cat);if(pr)return pr;
+  const last=DB.spese.filter(r=>r.pag&&keyD(r.desc)===keyD(desc)).sort((a,b)=>b.data.localeCompare(a.data))[0];
+  return last?last.pag:'e';
+}
+const payToggle=(id,v)=>`<div id="${id}" data-v="${v}" class="chips" style="margin-top:0"><button type="button" class="chip${v==='c'?' on':''}" data-act="pick-pag" data-g="${id}" data-v="c">Contanti</button><button type="button" class="chip${v==='e'?' on':''}" data-act="pick-pag" data-g="${id}" data-v="e">Elettronico</button></div>`;
+function setPag(id,v){const g=document.getElementById(id);if(!g)return;g.dataset.v=v;g.querySelectorAll('[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v))}
+function autoPag(){if(UI.edit.sp||UI.pagTouched||!$('#s_pag'))return;setPag('s_pag',suggestPag($('#s_desc').value,$('#s_cat').value))}
+function cassaCalc(){
+  const b=DB.setup.banca||{};if(!b.data0)return null;
+  const d0=b.data0,af=d=>d>d0;
+  const inc=DB.incassi.filter(r=>af(r.data));
+  const posIn=sum(inc.map(r=>(r.pos||0)+(r.satispay||0))),cashIn=sum(inc.map(r=>r.contanti||0));
+  const all=DB.spese.filter(r=>af(r.data)).concat(DB.annuali.filter(r=>af(r.data)));
+  const spE=sum(all.filter(r=>payOf(r)==='e').map(r=>r.importo)),spC=sum(all.filter(r=>payOf(r)==='c').map(r=>r.importo));
+  const tx=sum(DB.tasse.filter(t=>af(t.data)&&t.importo!=null).map(t=>t.importo));
+  const dep=sum(DB.depositi.filter(x=>af(x.data)).map(x=>x.importo));
+  const s0=b.saldo0||0,c0=b.cassa0||0;
+  return {d0,s0,c0,posIn,cashIn,spE,spC,tx,dep,banca:s0+posIn-spE-tx+dep,cassa:c0+cashIn-spC-dep,
+    senza:all.filter(r=>!r.pag).length};
+}
+function cassaCard(){
+  const b=DB.setup.banca||{},C=cassaCalc();
+  const bform=`<form id="bancaForm" autocomplete="off"><div class="grid g3">
+    <div><label for="b_data">Data zero (saldo a fine giornata)</label><input type="date" id="b_data" value="${esc(b.data0||todayISO())}" required></div>
+    <div><label for="b_saldo">Saldo in banca (€)</label><input type="text" inputmode="decimal" id="b_saldo" value="${b.data0?esc(String(b.saldo0).replace('.',',')):''}" placeholder="0,00"></div>
+    <div><label for="b_cassa">Contanti in cassa (€)</label><input type="text" inputmode="decimal" id="b_cassa" value="${esc(String(b.cassa0||0).replace('.',','))}" placeholder="0,00"></div></div>
+    <div class="row" style="margin-top:10px"><button class="btn" type="submit">${b.data0?'Aggiorna':'Imposta data zero'}</button></div></form>`;
+  if(!C)return `<div class="card"><h2>Cassa e banca</h2><p class="note">Scegli un giorno di partenza e inserisci il saldo del conto a fine giornata (e, se vuoi, i contanti in cassa). Da lì in poi calcolo quanto hai in banca e quanti contanti hai in cassa.</p>${bform}</div>`;
+  const row=(l,v,cls)=>`<div style="display:flex;justify-content:space-between;gap:10px;margin:3px 0"><span class="mut">${l}</span><b${cls?` class="${cls}"`:''}>${fmtE(v)}</b></div>`;
+  const ed=UI.edit.dep?DB.depositi.find(x=>x.id===UI.edit.dep):null;
+  const deps=DB.depositi.slice().sort((a,b)=>b.data.localeCompare(a.data)).slice(0,6);
+  return `<div class="card"><h2>Cassa e banca</h2>
+  <div class="kpis">${kpi('Saldo in banca',fmtE(C.banca),'stimato · partenza '+fmtD(C.d0),C.banca>=0?'pos':'neg')}${kpi('Contanti in cassa',fmtE(C.cassa),'da versare in banca',C.cassa>=0?'':'neg')}</div>
+  <div class="cols2"><div><h3>Banca dal ${fmtD(C.d0)}</h3>${row('Saldo iniziale',C.s0)}${row('+ Incassi POS e Satispay',C.posIn)}${row('− Spese elettroniche',C.spE)}${row('− Tasse versate',C.tx)}${row('+ Depositi di contanti',C.dep)}</div>
+  <div><h3>Contanti dal ${fmtD(C.d0)}</h3>${row('Contanti iniziali',C.c0)}${row('+ Incassi in contanti',C.cashIn)}${row('− Spese in contanti',C.spC)}${row('− Depositati in banca',C.dep)}</div></div>
+  ${C.senza?`<div class="note">${C.senza} spese dopo la data zero senza metodo scelto: le conto con il predefinito (o elettroniche).</div>`:''}
+  <h3 style="margin-top:12px">${ed?'Modifica deposito':'Versa contanti in banca'}</h3>
+  <form id="depForm" autocomplete="off"><div class="grid g3">
+    <div><label for="d_data">Data</label><input type="date" id="d_data" value="${esc(ed?ed.data:todayISO())}" required></div>
+    <div><label for="d_imp">Importo (€)</label><input type="text" inputmode="decimal" id="d_imp" value="${ed?esc(String(ed.importo).replace('.',',')):''}" placeholder="0,00" required></div>
+    <div><label for="d_nota">Nota</label><input type="text" id="d_nota" value="${esc(ed?ed.nota||'':'')}"></div></div>
+    <div class="row" style="margin-top:10px"><button class="btn" type="submit">${ed?'Aggiorna deposito':'Registra deposito'}</button>${ed?'<button class="btn sec" type="button" data-act="dep-cancel">Annulla</button>':''}</div></form>
+  ${deps.length?`<div class="tblwrap" style="margin-top:8px"><table class="tbl cards"><tbody>${deps.map(x=>`<tr class="${UI.edit.dep===x.id?'edit':''}"><td data-label="Data">${fmtD(x.data)}</td><td class="r" data-label="Importo"><b>${fmtE(x.importo)}</b></td><td data-label="Nota">${esc(x.nota||'')}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-dep" data-id="${x.id}">Modifica</button> <button class="btn danger sm" data-act="del-dep" data-id="${x.id}">Elimina</button></td></tr>`).join('')}</tbody></table></div>`:''}
+  <details style="margin-top:10px"><summary class="mut" style="cursor:pointer">Cambia data zero o saldo iniziale</summary><div style="margin-top:8px">${bform}</div></details>
+  <div class="note" style="margin-top:6px">Conto dalla data zero in poi (esclusa): POS e Satispay entrano in banca, i contanti restano in cassa finché non li depositi. Spese e annuali contano alla data in cui le hai pagate.</div></div>`;
+}
+function presetCard(){
+  const L=DB.setup.presetPag||[],PC=DB.setup.presetCat||{};
+  const sel=(attrs,v,blank)=>`<select ${attrs}>${blank?'<option value="">—</option>':''}<option value="e"${v==='e'?' selected':''}>Elettronico</option><option value="c"${v==='c'?' selected':''}>Contanti</option></select>`;
+  return `<div class="card"><h2>Pagamento predefinito delle spese</h2><p class="note">Ogni spesa parte con il metodo predefinito, e lo puoi sempre cambiare. Vale la regola più specifica: prima la voce (basta che il nome la contenga, es. "riba"), poi la categoria, altrimenti elettronico.</p>
+  <div class="tblwrap"><table class="tbl"><tbody>${L.map((x,i)=>`<tr><td>contiene «${esc(x.k)}»</td><td>${sel('data-pi="'+i+'"',x.pag)}</td><td class="r"><button class="btn danger sm" data-act="rm-preset" data-i="${i}">Rimuovi</button></td></tr>`).join('')||'<tr><td class="mut">Nessuna regola per voce</td></tr>'}</tbody></table></div>
+  <div class="row" style="margin:10px 0"><div><label for="new_preset">La voce contiene</label><input type="text" id="new_preset" style="max-width:220px" placeholder="es. riba"></div><div><label for="new_preset_pag">Pagata con</label>${sel('id="new_preset_pag"','e')}</div><button class="btn sec" data-act="add-preset">Aggiungi</button></div>
+  <h3>Per categoria</h3><div class="tblwrap"><table class="tbl"><tbody>${DB.setup.categorie.map(c=>`<tr><td>${esc(c)}</td><td>${sel('data-pc="'+esc(c)+'"',PC[c]||'',true)}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+function saveBanca(ev){
+  ev.preventDefault();
+  const d=$('#b_data').value,sv=$('#b_saldo').value.trim();
+  if(!d||sv===''){toast('Servono data e saldo');return}
+  DB.setup.banca={data0:d,saldo0:r2(numParse(sv))||0,cassa0:r2(numParse($('#b_cassa').value))||0};
+  saveDB();render();toast('Data zero salvata');
+}
+function saveDep(ev){
+  ev.preventDefault();
+  const rec={data:$('#d_data').value,importo:r2(numParse($('#d_imp').value)),nota:$('#d_nota').value.trim()};
+  if(!rec.data||!rec.importo){toast('Servono data e importo');return}
+  const ex=UI.edit.dep?DB.depositi.find(x=>x.id===UI.edit.dep):null;
+  if(ex)Object.assign(ex,rec);else DB.depositi.push(Object.assign({id:uid('de')},rec));
+  saveDB();UI.edit.dep=null;render();toast('Deposito salvato');
+}
 
 /* ---------- stato UI ---------- */
 const UI={tab:'riepilogo',anno:String(new Date().getFullYear()),edit:{},
@@ -382,7 +464,7 @@ function vRiepilogo(){
       <span class="mut">Incasso minimo al giorno (${S.aperti} giorni)</span><b style="text-align:right">${fmtE(S.beDay)}</b>
       <span class="mut">Pezzi al giorno (prezzo medio ${fmtE(prezzo)})</span><b style="text-align:right">${isFinite(pezzi)?pezzi:'—'}</b>
     </div><div class="note" style="margin-top:6px">Calcolo: costi fissi / (1 − food cost). Il prezzo medio si cambia in Setup.</div></div>`;
-  return kp+monthTbl+`<div class="cols2">${wdCard}${pay}</div><div class="cols2">${catC}${fC}</div>${beC}`;
+  return cassaCard()+kp+monthTbl+`<div class="cols2">${wdCard}${pay}</div><div class="cols2">${catC}${fC}</div>${beC}`;
 }
 
 /* ---------- form helper ---------- */
@@ -469,6 +551,7 @@ function vSpese(){
       <div><label for="s_cat">Categoria</label><select id="s_cat">${opt(DB.setup.categorie,'Materie Prime')}</select></div>
       <div><label for="s_ev">Evento</label><select id="s_ev">${opt(DB.setup.eventi.filter(e=>e!=='Chiusura straordinaria'),'','—')}</select></div>
     </div>
+    <div style="margin-top:10px"><label>Pagato con</label>${payToggle('s_pag','e')}<a href="#" data-act="save-preset" class="note" style="display:inline-block;margin-top:4px;color:var(--acc-t)">Salva come predefinito per questa voce</a></div>
     <div class="row" style="margin-top:12px"><button class="btn" type="submit" id="spSave">Salva spesa</button><button class="btn sec" type="button" id="spCancel">Annulla</button></div>
   </form></div>`:'')+`<div class="card"><div style="display:flex;justify-content:flex-end;margin-bottom:4px"><button class="btn sec sm" data-act="close-open">Chiudi il mese</button></div><details class="fdet" data-k="sp" ${fOpen('sp')}><summary>Filtri${fCount('sp')}</summary><div class="row" style="margin-bottom:10px">
     <div><label>Dal</label><input type="date" data-f="sp.da" value="${UI.f.sp.da}"></div>
@@ -504,25 +587,26 @@ function fillSpForm(){
   $('#s_cat').value=r?r.categoria:'Materie Prime';$('#s_ev').value=r?r.evento||'':'';
   $('#sT').textContent=r?'Modifica spesa del '+fmtD(r.data):'Nuova spesa';
   $('#spSave').textContent=r?'Aggiorna spesa':'Salva spesa';
+  UI.pagTouched=false;setPag('s_pag',r?payOf(r):'e');
   renderSupChips();
 }
 function listSp(){
   refreshFBadge('sp');const f=UI.f.sp, q=f.q.trim().toLowerCase();
   const rows=DB.spese.filter(r=>inYear(r.data)&&(!f.da||r.data>=f.da)&&(!f.a||r.data<=f.a)&&(!f.cat||r.categoria===f.cat)&&(!f.ev||r.evento===f.ev)&&(!q||(r.desc||'').toLowerCase().includes(q))).sort((a,b)=>b.data.localeCompare(a.data));
   const T=sum(rows.map(r=>r.importo));
-  const mRow=r=>`<div class="mrow ${UI.edit.sp===r.id?'edit':''}"><div class="m1"><b class="mv">${esc(r.desc)}</b><b class="mt">${fmtE(r.importo)}</b></div><div class="m2"><span>${fmtD(r.data)} · ${esc(r.categoria)}</span>${r.evento?`<span class="pill">${esc(r.evento)}</span>`:''}<span class="ma"><button class="btn sec sm" data-act="edit-sp" data-id="${r.id}" aria-label="Modifica">✎</button><button class="btn danger sm" data-act="del-sp" data-id="${r.id}" aria-label="Elimina">✕</button></span></div></div>`;
-  const rowHtml=r=>`<tr class="${UI.edit.sp===r.id?'edit':''}"><td data-label="Data">${fmtD(r.data)}</td><td data-label="Voce">${esc(r.desc)}</td><td class="r" data-label="Importo"><b>${fmtE(r.importo)}</b></td><td data-label="Categoria">${esc(r.categoria)}</td><td data-label="Evento">${r.evento?`<span class="pill">${esc(r.evento)}</span>`:''}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-sp" data-id="${r.id}">Modifica</button> <button class="btn danger sm" data-act="del-sp" data-id="${r.id}">Elimina</button></td></tr>`;
+  const mRow=r=>`<div class="mrow ${UI.edit.sp===r.id?'edit':''}"><div class="m1"><b class="mv">${esc(r.desc)}</b><b class="mt">${fmtE(r.importo)}</b></div><div class="m2"><span>${fmtD(r.data)} · ${esc(r.categoria)}</span>${pagPill(r)}${r.evento?`<span class="pill">${esc(r.evento)}</span>`:''}<span class="ma"><button class="btn sec sm" data-act="edit-sp" data-id="${r.id}" aria-label="Modifica">✎</button><button class="btn danger sm" data-act="del-sp" data-id="${r.id}" aria-label="Elimina">✕</button></span></div></div>`;
+  const rowHtml=r=>`<tr class="${UI.edit.sp===r.id?'edit':''}"><td data-label="Data">${fmtD(r.data)}</td><td data-label="Voce">${esc(r.desc)}</td><td class="r" data-label="Importo"><b>${fmtE(r.importo)}</b></td><td data-label="Categoria">${esc(r.categoria)}</td><td data-label="Pagato">${pagPill(r)}</td><td data-label="Evento">${r.evento?`<span class="pill">${esc(r.evento)}</span>`:''}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-sp" data-id="${r.id}">Modifica</button> <button class="btn danger sm" data-act="del-sp" data-id="${r.id}">Elimina</button></td></tr>`;
   const groups=monthGroups(rows);
   $('#spList').innerHTML=!rows.length?'<div class="empty">Nessuna spesa con questi filtri</div>':
   `<div class="row" style="gap:22px;margin-bottom:8px"><div><span class="mut">Totale</span><div class="tot">${fmtE(T)}</div></div><div><span class="mut">Voci</span><div class="tot">${rows.length}</div></div></div>`+moBulk('sp')+
   groups.map((g,i)=>{const gt=sum(g.rows.map(r=>r.importo));
-    return monthHead('sp',g,i,`${fmtE(gt)} · ${g.rows.length} voci`)+(moOpen('sp',g.ym,i)?`<div class="mlist">${g.rows.map(mRow).join('')}</div><div class="tblwrap dsk"><table class="tbl"><thead><tr><th>Data</th><th>Fornitore / descrizione</th><th class="r">Importo</th><th>Categoria</th><th>Evento</th><th></th></tr></thead><tbody>${g.rows.map(rowHtml).join('')}</tbody></table></div>`:'')}).join('');
+    return monthHead('sp',g,i,`${fmtE(gt)} · ${g.rows.length} voci`)+(moOpen('sp',g.ym,i)?`<div class="mlist">${g.rows.map(mRow).join('')}</div><div class="tblwrap dsk"><table class="tbl"><thead><tr><th>Data</th><th>Fornitore / descrizione</th><th class="r">Importo</th><th>Categoria</th><th>Pagato</th><th>Evento</th><th></th></tr></thead><tbody>${g.rows.map(rowHtml).join('')}</tbody></table></div>`:'')}).join('');
 }
 function saveSp(ev){
   ev.preventDefault();
   const data=$('#s_data').value, desc=$('#s_desc').value.trim(), imp=r2(numParse($('#s_imp').value));
   if(!data||!desc||!imp){toast('Servono data, voce e importo');return}
-  const rec={data,desc,importo:imp,categoria:$('#s_cat').value,evento:$('#s_ev').value};
+  const rec={data,desc,importo:imp,categoria:$('#s_cat').value,evento:$('#s_ev').value,pag:$('#s_pag').dataset.v||'e'};
   const ex=UI.edit.sp?DB.spese.find(x=>x.id===UI.edit.sp):null;
   if(ex)Object.assign(ex,rec);else DB.spese.push(Object.assign({id:uid('sp')},rec));
   saveDB();UI.edit.sp=null;UI.open.sp=false;render();toast('Spesa salvata');
@@ -536,6 +620,7 @@ function vFisse(){
       <div><label>Data</label><input type="date" id="a_data" required></div>
       <div><label>Descrizione</label><input type="text" id="a_desc" required></div>
       <div><label>Importo</label><input type="text" inputmode="decimal" id="a_imp" required></div></div>
+      <div style="margin-top:10px"><label>Pagato con</label>${payToggle('a_pag','e')}</div>
       <div class="row" style="margin-top:12px"><button class="btn" type="submit" id="anSave">Salva</button><button class="btn sec" type="button" id="anCancel" hidden>Annulla</button></div></form></div>
     <div class="card"><div id="anList"></div></div></div>
   <div><div class="card"><h2 id="tT">Tasse e contributi versati</h2>
@@ -551,7 +636,7 @@ function vFisse(){
 function fillFisseForms(){
   const a=UI.edit.an?DB.annuali.find(x=>x.id===UI.edit.an):null;
   $('#a_data').value=a?a.data:todayISO();$('#a_desc').value=a?a.desc:'';$('#a_imp').value=a?String(a.importo).replace('.',','):'';
-  $('#aT').textContent=a?'Modifica spesa annuale':'Spesa annuale / una tantum';$('#anSave').textContent=a?'Aggiorna':'Salva';$('#anCancel').hidden=!a;
+  $('#aT').textContent=a?'Modifica spesa annuale':'Spesa annuale / una tantum';$('#anSave').textContent=a?'Aggiorna':'Salva';$('#anCancel').hidden=!a;setPag('a_pag',a?payOf(a):suggestPag('', ''));
   const t=UI.edit.tx?DB.tasse.find(x=>x.id===UI.edit.tx):null;
   $('#t_data').value=t?t.data:todayISO();$('#t_tipo').value=t?t.tipo:'IVA';$('#t_imp').value=(t&&t.importo!=null)?String(t.importo).replace('.',','):'';
   $('#t_comp').value=t?(t.competenza||''):'';$('#t_note').value=t?t.note||'':'';
@@ -559,14 +644,14 @@ function fillFisseForms(){
 }
 function listFisse(){
   const an=DB.annuali.filter(r=>inYear(r.data)).sort((a,b)=>b.data.localeCompare(a.data));
-  $('#anList').innerHTML=`<h3>Annuali e una tantum · totale ${fmtE(sum(an.map(r=>r.importo)))}</h3>`+(an.length?`<div class="tblwrap"><table class="tbl cards"><tbody>${an.map(r=>`<tr class="${UI.edit.an===r.id?'edit':''}"><td data-label="Data">${fmtD(r.data)}</td><td data-label="Voce">${esc(r.desc)}</td><td class="r" data-label="Importo"><b>${fmtE(r.importo)}</b></td><td class="r nolabel"><button class="btn sec sm" data-act="edit-an" data-id="${r.id}">Modifica</button> <button class="btn danger sm" data-act="del-an" data-id="${r.id}">Elimina</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nessuna voce</div>');
+  $('#anList').innerHTML=`<h3>Annuali e una tantum · totale ${fmtE(sum(an.map(r=>r.importo)))}</h3>`+(an.length?`<div class="tblwrap"><table class="tbl cards"><tbody>${an.map(r=>`<tr class="${UI.edit.an===r.id?'edit':''}"><td data-label="Data">${fmtD(r.data)}</td><td data-label="Voce">${esc(r.desc)} ${pagPill(r)}</td><td class="r" data-label="Importo"><b>${fmtE(r.importo)}</b></td><td class="r nolabel"><button class="btn sec sm" data-act="edit-an" data-id="${r.id}">Modifica</button> <button class="btn danger sm" data-act="del-an" data-id="${r.id}">Elimina</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nessuna voce</div>');
   const tx=DB.tasse.filter(t=>UI.anno==='tutto'||compet(t)===UI.anno).sort((a,b)=>b.data.localeCompare(a.data));
   const byT=['IVA','IRPEF','INPS','Altro'].map(k=>[k,sum(tx.filter(t=>t.tipo===k).map(t=>t.importo||0))]).filter(x=>x[1]>0);
   $('#txList').innerHTML=`<h3>Tasse e contributi · totale ${fmtE(sum(tx.map(t=>t.importo||0)))}</h3>`+(byT.length?`<div class="note" style="margin-bottom:8px">${byT.map(x=>x[0]+' '+fmtE(x[1])).join(' · ')}</div>`:'')+(tx.length?`<div class="tblwrap"><table class="tbl cards"><tbody>${tx.map(t=>`<tr class="${UI.edit.tx===t.id?'edit':''}"><td data-label="Data">${fmtD(t.data)}</td><td data-label="Tipo"><span class="pill">${esc(t.tipo)}</span></td><td class="r" data-label="Importo">${t.importo!=null?'<b>'+fmtE(t.importo)+'</b>':'<span class="mut">previsto</span>'}</td><td data-label="Note">${esc(t.note||'')}${compet(t)!==String(t.data).slice(0,4)?` <span class="mut">(comp. ${compet(t)})</span>`:''}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-tx" data-id="${t.id}">Modifica</button> <button class="btn danger sm" data-act="del-tx" data-id="${t.id}">Elimina</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nessun versamento</div>');
 }
 function saveAn(ev){
   ev.preventDefault();
-  const rec={data:$('#a_data').value,desc:$('#a_desc').value.trim(),importo:r2(numParse($('#a_imp').value))};
+  const rec={data:$('#a_data').value,desc:$('#a_desc').value.trim(),importo:r2(numParse($('#a_imp').value)),pag:$('#a_pag').dataset.v||'e'};
   if(!rec.data||!rec.desc||!rec.importo){toast('Servono data, descrizione e importo');return}
   const ex=UI.edit.an?DB.annuali.find(x=>x.id===UI.edit.an):null;
   if(ex)Object.assign(ex,rec);else DB.annuali.push(Object.assign({id:uid('an')},rec));
@@ -755,6 +840,7 @@ function ricStatus(ym){
 }
 function openClose(y){const ym=y||defaultCloseYM();UI.tab='spese';UI.close={open:true,ym,data:lastDay(ym),vals:{}};render();toTop()}
 function closeTot(){return sum(ricStatus(UI.close.ym).filter(s=>!s.hasHere).map(s=>numParse(UI.close.vals[s.k])))}
+const closePag=s=>(UI.close.pag&&UI.close.pag[s.k])||presetFor(s.x.desc,s.x.categoria)||'e';
 function closePanel(){
   const C=UI.close, st=ricStatus(C.ym);
   let cur=todayISO().slice(0,7);const yms=[];for(let i=0;i<15;i++){yms.push(cur);cur=prevYM(cur)}
@@ -764,15 +850,15 @@ function closePanel(){
   <div><label for="cm_data">Data delle spese</label><input type="date" id="cm_data" value="${esc(C.data)}"></div></div>
   <div class="clist">${st.map((s,i)=>({s,i})).sort((a,b)=>(a.s.hasHere?1:0)-(b.s.hasHere?1:0)).map(({s,i})=>s.hasHere
     ?`<div class="crow done"><div class="cn"><b>${esc(s.x.desc)}</b><small>${esc(s.x.categoria)}</small></div><span class="pill">già registrata · ${fmtE(s.here)}</span></div>`
-    :`<div class="crow"><div class="cn"><b>${esc(s.x.desc)}</b><small>${esc(s.x.categoria)}${s.prev?` · ultimo <a href="#" data-act="fill-prev" data-i="${i}" style="color:var(--acc-t)">${fmtE(s.prev.v)}</a> ${MESI[+s.prev.ym.slice(5)-1].slice(0,3)}`:''}</small></div><input type="text" inputmode="decimal" class="cm-in" data-k="${esc(s.k)}" value="${esc(C.vals[s.k]||'')}" placeholder="0,00" aria-label="Importo ${esc(s.x.desc)}"></div>`).join('')}</div>
+    :`<div class="crow"><div class="cn"><b>${esc(s.x.desc)}</b><small>${esc(s.x.categoria)}${s.prev?` · ultimo <a href="#" data-act="fill-prev" data-i="${i}" style="color:var(--acc-t)">${fmtE(s.prev.v)}</a> ${MESI[+s.prev.ym.slice(5)-1].slice(0,3)}`:''}</small></div><button type="button" class="chip" data-act="close-pag" data-k="${esc(s.k)}" aria-label="Metodo di pagamento" style="min-height:32px;padding:4px 10px;font-size:13px">${closePag(s)==='c'?'Contanti':'Elettr.'}</button><input type="text" inputmode="decimal" class="cm-in" data-k="${esc(s.k)}" value="${esc(C.vals[s.k]||'')}" placeholder="0,00" aria-label="Importo ${esc(s.x.desc)}"></div>`).join('')}</div>
   <div class="csave"><div><span class="mut">Totale da salvare</span><div class="tot" id="cm_tot">${fmtE(closeTot())}</div></div>
   <div class="row"><button class="btn" data-act="close-save">Salva le voci compilate</button><button class="btn sec" data-act="close-cancel">Annulla</button></div></div>
-  <div class="note" style="margin-top:6px">Le voci lasciate vuote non vengono registrate. Toccando l'ultimo importo lo copi nel campo.</div></div>`;
+  <div class="note" style="margin-top:6px">Il tasto accanto all'importo cambia il metodo di pagamento (parte dal predefinito). Le voci lasciate vuote non vengono registrate. Toccando l'ultimo importo lo copi nel campo.</div></div>`;
 }
 function closeSave(){
   const C=UI.close;if(!C.data){toast('Manca la data');return}
   let n=0;
-  ricStatus(C.ym).forEach(s=>{if(s.hasHere)return;const v=r2(numParse(C.vals[s.k]));if(v>0){DB.spese.push({id:uid('sp'),data:C.data,desc:s.x.desc,importo:v,categoria:s.x.categoria,evento:''});n++}});
+  ricStatus(C.ym).forEach(s=>{if(s.hasHere)return;const v=r2(numParse(C.vals[s.k]));if(v>0){DB.spese.push({id:uid('sp'),data:C.data,desc:s.x.desc,importo:v,categoria:s.x.categoria,evento:'',pag:closePag(s)});n++}});
   if(!n){toast('Nessun importo inserito');return}
   saveDB();UI.close={open:false,ym:'',data:'',vals:{}};render();toast('Aggiunte '+n+' spese');
 }
@@ -801,7 +887,7 @@ function vSetup(){
     <p class="note" style="margin-top:8px"><b>Unisci</b> aggiunge solo le righe che mancano (stesso file due volte non crea doppioni). <b>Sostituisci</b> cancella quello che c'è e mette il contenuto del file.</p></div>
   <div class="card"><h2>Esporta per Excel</h2><div class="row"><button class="btn sec" data-act="csv-inc">Incassi (.csv)</button><button class="btn sec" data-act="csv-sp">Spese (.csv)</button></div></div>
   <div class="card"><h2>Punto di pareggio</h2><div class="row"><div><label for="prezzo">Prezzo medio per pezzo (€)</label><input type="text" inputmode="decimal" id="prezzo" value="${String(DB.setup.prezzoMedio).replace('.',',')}" style="max-width:140px"></div><button class="btn sec" data-act="save-prezzo">Salva</button></div></div>
-  ${mergeCard()}${ricCard()}${list('categorie','Categorie di spesa')}${list('eventi','Eventi')}${list('meteo','Meteo')}
+  ${mergeCard()}${ricCard()}${presetCard()}${list('categorie','Categorie di spesa')}${list('eventi','Eventi')}${list('meteo','Meteo')}
   <div class="card"><h2>Azzera</h2><p class="note">Cancella tutti i dati di questo browser. Scarica prima un backup.</p><button class="btn danger" data-act="wipe">Cancella tutto</button></div>`;
 }
 function download(name,text,type){
@@ -820,13 +906,16 @@ function importFile(file,mode){
       DB=n;
     }else{
       let add=0;
-      ['incassi','spese','annuali','tasse'].forEach(k=>{
+      ['incassi','spese','annuali','tasse','depositi'].forEach(k=>{
         const ids=new Set(DB[k].map(r=>r.id));
         const dates=k==='incassi'?new Set(DB.incassi.map(r=>r.data)):null;
         n[k].forEach(r=>{if(ids.has(r.id)||(dates&&dates.has(r.data)))return;DB[k].push(r);add++});
       });
       ['categorie','eventi','meteo'].forEach(k=>n.setup[k].forEach(x=>{if(!DB.setup[k].includes(x))DB.setup[k].push(x)}));
       n.setup.ricorrenti.forEach(x=>{if(!DB.setup.ricorrenti.some(y=>keyD(y.desc)===keyD(x.desc)))DB.setup.ricorrenti.push(x)});
+      (n.setup.presetPag||[]).forEach(x=>{if(!DB.setup.presetPag.some(y=>keyD(y.k)===keyD(x.k)))DB.setup.presetPag.push(x)});
+      DB.setup.presetCat=Object.assign({},n.setup.presetCat||{},DB.setup.presetCat||{});
+      if(!(DB.setup.banca&&DB.setup.banca.data0)&&n.setup.banca&&n.setup.banca.data0)DB.setup.banca=n.setup.banca;
       toast('Aggiunte '+add+' righe');
     }
     saveDB();render();if(mode==='replace')toast('Dati caricati');
@@ -1018,14 +1107,23 @@ document.addEventListener('click',e=>{
   else if(a==='cmp-wa-auto'){UI.cmp.wa='';render()}
   else if(a==='cmp-ytd'){const t0=todayISO(),y=UI.cmp.b;UI.cmp.da=y+'-01-01';UI.cmp.dt=y===t0.slice(0,4)?t0:y+'-12-31';render()}
   else if(a==='cmp-full'){UI.cmp.da=UI.cmp.b+'-01-01';UI.cmp.dt=UI.cmp.b+'-12-31';render()}
-  else if(a==='pick-sup'){const n=t.dataset.name;$('#s_desc').value=n;const last=DB.spese.filter(r=>keyD(r.desc)===keyD(n)).sort((x,y)=>y.data.localeCompare(x.data))[0];if(last&&!UI.edit.sp)$('#s_cat').value=last.categoria;renderSupChips();$('#s_imp').focus()}
+  else if(a==='pick-sup'){const n=t.dataset.name;$('#s_desc').value=n;const last=DB.spese.filter(r=>keyD(r.desc)===keyD(n)).sort((x,y)=>y.data.localeCompare(x.data))[0];if(last&&!UI.edit.sp)$('#s_cat').value=last.categoria;autoPag();renderSupChips();$('#s_imp').focus()}
+  else if(a==='pick-pag'){e.preventDefault();setPag(t.dataset.g,t.dataset.v);if(t.dataset.g==='s_pag')UI.pagTouched=true}
+  else if(a==='save-preset'){e.preventDefault();const d=$('#s_desc').value.trim();if(!d){toast('Scrivi prima la voce');return}
+    const v=$('#s_pag').dataset.v||'e',L=DB.setup.presetPag,ex=L.find(x=>keyD(x.k)===keyD(d));if(ex)ex.pag=v;else L.push({k:d,pag:v});saveDB();toast('«'+d+'» → '+(v==='c'?'contanti':'elettronico'))}
+  else if(a==='close-pag'){const s=ricStatus(UI.close.ym).find(x=>x.k===t.dataset.k);if(s){UI.close.pag=UI.close.pag||{};const nv=closePag(s)==='c'?'e':'c';UI.close.pag[s.k]=nv;t.textContent=nv==='c'?'Contanti':'Elettr.'}}
+  else if(a==='add-preset'){const v=$('#new_preset').value.trim();if(!v){toast('Scrivi la voce');return}const pg=$('#new_preset_pag').value,L=DB.setup.presetPag,ex=L.find(x=>keyD(x.k)===keyD(v));if(ex)ex.pag=pg;else L.push({k:v,pag:pg});saveDB();render();toast('Regola salvata')}
+  else if(a==='rm-preset'){DB.setup.presetPag.splice(+t.dataset.i,1);saveDB();render()}
+  else if(a==='edit-dep'){UI.edit.dep=id;render()}
+  else if(a==='dep-cancel'){UI.edit.dep=null;render()}
+  else if(a==='del-dep'){const r=DB.depositi.find(x=>x.id===id);if(r&&confirm('Elimino il deposito del '+fmtD(r.data)+'?')){DB.depositi=DB.depositi.filter(x=>x.id!==id);if(UI.edit.dep===id)UI.edit.dep=null;saveDB();render();toast('Eliminato')}}
   else if(a==='sheet-close'){UI.open={inc:false,sp:false};UI.edit.inc=null;UI.edit.sp=null;UI.close={open:false,ym:'',data:'',vals:{}};render()}
   else if(a==='sy-login'){syLogin()}
   else if(a==='sy-now'){doSync().then(()=>{if(UI.tab==='setup')render()})}
   else if(a==='sy-logout'){if(confirm('Esco dalla sincronizzazione? I dati restano su questo dispositivo.')){AUTH=null;TOK={id:'',exp:0};try{localStorage.removeItem(AUTH_KEY);localStorage.removeItem(SYNC_KEY)}catch(e){}SY={pull:-1,push:0,at:0};setSync('off');render()}}
   else if(a==='export'){download('dema-backup-'+todayISO()+'.json',JSON.stringify(DB,null,1));localStorage.setItem(KEY_EXP,String(Date.now()));renderShell();toast('Backup scaricato')}
   else if(a==='csv-inc'){download('dema-incassi.csv','\ufeffData;Contanti;POS;Satispay;Totale;Chiusura;Meteo;Evento\n'+DB.incassi.slice().sort((x,y)=>x.data.localeCompare(y.data)).map(r=>[r.data,cn(r.contanti),cn(r.pos),cn(r.satispay),cn(r2(tot(r))),cn(r.chiusura),csvCell(r.meteo),csvCell(r.evento)].join(';')).join('\n'),'text/csv')}
-  else if(a==='csv-sp'){download('dema-spese.csv','\ufeffData;Fornitore;Importo;Categoria;Evento\n'+DB.spese.slice().sort((x,y)=>x.data.localeCompare(y.data)).map(r=>[r.data,csvCell(r.desc),cn(r.importo),csvCell(r.categoria),csvCell(r.evento)].join(';')).join('\n'),'text/csv')}
+  else if(a==='csv-sp'){download('dema-spese.csv','\ufeffData;Fornitore;Importo;Categoria;Evento;Pagamento\n'+DB.spese.slice().sort((x,y)=>x.data.localeCompare(y.data)).map(r=>[r.data,csvCell(r.desc),cn(r.importo),csvCell(r.categoria),csvCell(r.evento),pagShow(r)==='c'?'Contanti':(pagShow(r)?'Elettronico':'')].join(';')).join('\n'),'text/csv')}
   else if(a==='save-prezzo'){DB.setup.prezzoMedio=numParse($('#prezzo').value)||5.5;saveDB();toast('Salvato')}
   else if(a==='add-list'){const k=t.dataset.k,v=$('#new_'+k).value.trim();if(v&&!DB.setup[k].includes(v)){DB.setup[k].push(v);saveDB();render()}}
   else if(a==='rm-list'){e.preventDefault();const k=t.dataset.k,i=+t.dataset.i,v=DB.setup[k][i];if(confirm('Tolgo "'+v+'" dall\'elenco? Le righe già registrate restano com\'erano.')){DB.setup[k].splice(i,1);saveDB();render()}}
@@ -1033,7 +1131,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.classList&&d.classList.contains('fdet')&&isMob())UI.fopen[d.dataset.k]=d.open},true);
 document.addEventListener('submit',e=>{
-  const id=e.target.id; if(id==='incForm')saveInc(e);else if(id==='spForm')saveSp(e);else if(id==='anForm')saveAn(e);else if(id==='txForm')saveTx(e);
+  const id=e.target.id; if(id==='incForm')saveInc(e);else if(id==='spForm')saveSp(e);else if(id==='anForm')saveAn(e);else if(id==='txForm')saveTx(e);else if(id==='bancaForm')saveBanca(e);else if(id==='depForm')saveDep(e);
 });
 document.addEventListener('input',e=>{
   const t=e.target;
@@ -1044,6 +1142,7 @@ document.addEventListener('input',e=>{
     const last=DB.spese.filter(r=>(r.desc||'').toLowerCase()===t.value.trim().toLowerCase()).sort((a,b)=>b.data.localeCompare(a.data))[0];
     if(last)$('#s_cat').value=last.categoria;
   }
+  if(t.id==='s_desc')autoPag();
   if(t.dataset.f&&t.tagName==='INPUT'&&t.type==='search'){const[p,k]=t.dataset.f.split('.');UI.f[p][k]=t.value;UI.lim[p==='inc'?'inc':'sp']=60;listSp()}
 });
 document.addEventListener('change',e=>{
@@ -1061,6 +1160,9 @@ document.addEventListener('change',e=>{
     else{let v=t.value;if(!v||v.slice(0,4)!==C.b)v=k==='da'?C.b+'-01-01':C.b+'-12-31';C[k]=v;if(C.da>C.dt){if(k==='da')C.dt=C.da;else C.da=C.dt}}
     render();return;
   }
+  if(t.id==='s_cat')autoPag();
+  if(t.dataset.pi!==undefined){const p=DB.setup.presetPag[+t.dataset.pi];if(p){p.pag=t.value;saveDB();toast('Salvato')}}
+  if(t.dataset.pc!==undefined){DB.setup.presetCat=DB.setup.presetCat||{};if(t.value)DB.setup.presetCat[t.dataset.pc]=t.value;else delete DB.setup.presetCat[t.dataset.pc];saveDB();toast('Salvato')}
   if(t.id==='cm_ym'){UI.close.ym=t.value;UI.close.data=lastDay(t.value);render()}
   if(t.id==='cm_data'){UI.close.data=t.value}
   if(t.id==='impMerge'&&t.files[0]){importFile(t.files[0],'merge');t.value=''}
