@@ -294,24 +294,29 @@ function cassaCalc(){
   const tx=sum(DB.tasse.filter(t=>af(t.data)&&t.importo!=null).map(t=>t.importo));
   const dep=sum(DB.depositi.filter(x=>af(x.data)).map(x=>x.importo));
   const s0=b.saldo0||0,c0=b.cassa0||0,banca=s0+posIn-spE-tx+dep;
-  return {d0,s0,c0,posIn,cashIn,spE,spC,tx,dep,banca,cassa:c0+cashIn-spC-dep,pend,pendBy,previsto:banca-pend,
+  const mm={};const M=ym=>mm[ym]||(mm[ym]={ci:0,sc:0,dp:0});
+  inc.forEach(r=>{M(r.data.slice(0,7)).ci+=r.contanti||0});
+  cashRows.forEach(r=>{M(r.data.slice(0,7)).sc+=splitOf(r)});
+  DB.depositi.filter(x=>af(x.data)).forEach(x=>{M(x.data.slice(0,7)).dp+=x.importo});
+  const mesi=Object.keys(mm).sort().map(ym=>Object.assign({ym,pr:mm[ym].ci-mm[ym].sc-mm[ym].dp},mm[ym]));
+  return {d0,s0,c0,posIn,cashIn,spE,spC,tx,dep,banca,prelievi:cashIn-spC-dep,mesi,pend,pendBy,previsto:banca-pend,
     senza:cashRows.filter(r=>!r.pag).length};
 }
 function cassaCard(){
   const b=DB.setup.banca||{},C=cassaCalc();
-  const bform=`<form id="bancaForm" autocomplete="off"><div class="grid g3">
+  const bform=`<form id="bancaForm" autocomplete="off"><div class="grid g2">
     <div><label for="b_data">Data zero (saldo a fine giornata)</label><input type="date" id="b_data" value="${esc(b.data0||todayISO())}" required></div>
-    <div><label for="b_saldo">Saldo in banca (€)</label><input type="text" inputmode="decimal" id="b_saldo" value="${b.data0?esc(String(b.saldo0).replace('.',',')):''}" placeholder="0,00"></div>
-    <div><label for="b_cassa">Contanti in cassa (€)</label><input type="text" inputmode="decimal" id="b_cassa" value="${esc(String(b.cassa0||0).replace('.',','))}" placeholder="0,00"></div></div>
+    <div><label for="b_saldo">Saldo in banca (€)</label><input type="text" inputmode="decimal" id="b_saldo" value="${b.data0?esc(String(b.saldo0).replace('.',',')):''}" placeholder="0,00"></div></div>
     <div class="row" style="margin-top:10px"><button class="btn" type="submit">${b.data0?'Aggiorna':'Imposta data zero'}</button></div></form>`;
-  if(!C)return `<div class="card"><h2>Cassa e banca</h2><p class="note">Scegli un giorno di partenza e inserisci il saldo del conto a fine giornata (e, se vuoi, i contanti in cassa). Da lì in poi calcolo quanto hai in banca e quanti contanti hai in cassa.</p>${bform}</div>`;
+  if(!C)return `<div class="card"><h2>Cassa e banca</h2><p class="note">Scegli un giorno di partenza e inserisci il saldo del conto a fine giornata Da lì in poi calcolo quanto hai in banca e quanti contanti hai prelevato dagli incassi.</p>${bform}</div>`;
   const row=(l,v,cls)=>`<div style="display:flex;justify-content:space-between;gap:10px;margin:3px 0"><span class="mut">${l}</span><b${cls?` class="${cls}"`:''}>${fmtE(v)}</b></div>`;
   const ed=UI.edit.dep?DB.depositi.find(x=>x.id===UI.edit.dep):null;
   const deps=DB.depositi.slice().sort((a,b)=>b.data.localeCompare(a.data)).slice(0,6);
   return `<div class="card"><h2>Cassa e banca</h2>
-  <div class="kpis">${kpi('Saldo in banca',fmtE(C.banca),'stimato · partenza '+fmtD(C.d0),C.banca>=0?'pos':'neg')}${kpi('Contanti in cassa',fmtE(C.cassa),'da versare in banca',C.cassa>=0?'':'neg')}${kpi('Da addebitare',fmtE(C.pend),'RIBA non ancora addebitate')}</div>
+  <div class="kpis">${kpi('Saldo in banca',fmtE(C.banca),'stimato · partenza '+fmtD(C.d0),C.banca>=0?'pos':'neg')}${kpi('Prelievi contanti',fmtE(C.prelievi),'incassi in contanti − spese − depositi')}${kpi('Da addebitare',fmtE(C.pend),'RIBA non ancora addebitate')}</div>
   <div class="cols2"><div><h3>Banca dal ${fmtD(C.d0)}</h3>${row('Saldo iniziale',C.s0)}${row('+ Incassi POS e Satispay',C.posIn)}${row('− Spese elettroniche',C.spE)}${row('− Tasse versate',C.tx)}${row('+ Depositi di contanti',C.dep)}${C.pend?row('− RIBA da addebitare',C.pend)+row('= Saldo dopo gli addebiti',C.previsto,C.previsto>=0?'pos':'neg'):''}</div>
-  <div><h3>Contanti dal ${fmtD(C.d0)}</h3>${row('Contanti iniziali',C.c0)}${row('+ Incassi in contanti',C.cashIn)}${row('− Spese in contanti',C.spC)}${row('− Depositati in banca',C.dep)}</div></div>
+  <div><h3>Contanti dal ${fmtD(C.d0)}</h3>${row('+ Incassi in contanti',C.cashIn)}${row('− Spese in contanti',C.spC)}${row('− Depositati in banca',C.dep)}${row('= Prelievi contanti',C.prelievi,'')}</div></div>
+  ${C.mesi.length?`<div class="tblwrap" style="margin-top:8px"><table class="tbl wide"><thead><tr><th>Mese</th><th class="r">Incassi contanti</th><th class="r">Spese contanti</th><th class="r">Depositi</th><th class="r">Prelievi</th></tr></thead><tbody>${C.mesi.map(m=>`<tr><td data-label="Mese">${labelYM(m.ym)}</td><td class="r" data-label="Incassi contanti">${fmtE(m.ci)}</td><td class="r" data-label="Spese contanti">${fmtE(m.sc)}</td><td class="r" data-label="Depositi">${fmtE(m.dp)}</td><td class="r" data-label="Prelievi"><b>${fmtE(m.pr)}</b></td></tr>`).join('')}</tbody></table></div>`:''}
   ${C.pend?`<div class="note">Addebiti in arrivo: ${Object.keys(C.pendBy).sort().map(d=>fmtD(d)+' · '+fmtE(C.pendBy[d])).join(' — ')}</div>`:''}
   ${C.senza?`<div class="note">${C.senza} spese dopo la data zero senza metodo scelto: le conto con il predefinito (o elettroniche).</div>`:''}
   <h3 style="margin-top:12px">${ed?'Modifica deposito':'Versa contanti in banca'}</h3>
@@ -322,7 +327,7 @@ function cassaCard(){
     <div class="row" style="margin-top:10px"><button class="btn" type="submit">${ed?'Aggiorna deposito':'Registra deposito'}</button>${ed?'<button class="btn sec" type="button" data-act="dep-cancel">Annulla</button>':''}</div></form>
   ${deps.length?`<div class="tblwrap" style="margin-top:8px"><table class="tbl cards"><tbody>${deps.map(x=>`<tr class="${UI.edit.dep===x.id?'edit':''}"><td data-label="Data">${fmtD(x.data)}</td><td class="r" data-label="Importo"><b>${fmtE(x.importo)}</b></td><td data-label="Nota">${esc(x.nota||'')}</td><td class="r nolabel"><button class="btn sec sm" data-act="edit-dep" data-id="${x.id}">Modifica</button> <button class="btn danger sm" data-act="del-dep" data-id="${x.id}">Elimina</button></td></tr>`).join('')}</tbody></table></div>`:''}
   <details style="margin-top:10px"><summary class="mut" style="cursor:pointer">Cambia data zero o saldo iniziale</summary><div style="margin-top:8px">${bform}</div></details>
-  <div class="note" style="margin-top:6px">Conto dalla data zero in poi (esclusa): POS e Satispay entrano in banca, i contanti restano in cassa finché non li depositi. Spese e annuali contano alla data in cui le hai pagate; le RIBA escono dalla banca a fine mese successivo.</div></div>`;
+  <div class="note" style="margin-top:6px">Conto dalla data zero in poi (esclusa): POS e Satispay entrano in banca, i contanti che non spendi né depositi li considero prelevati da te (la cassa ha una cifra fissa). Spese e annuali contano alla data in cui le hai pagate; le RIBA escono dalla banca a fine mese successivo.</div></div>`;
 }
 function presetCard(){
   const L=DB.setup.presetPag||[],PC=DB.setup.presetCat||{};
@@ -336,7 +341,7 @@ function saveBanca(ev){
   ev.preventDefault();
   const d=$('#b_data').value,sv=$('#b_saldo').value.trim();
   if(!d||sv===''){toast('Servono data e saldo');return}
-  DB.setup.banca={data0:d,saldo0:r2(numParse(sv))||0,cassa0:r2(numParse($('#b_cassa').value))||0};
+  DB.setup.banca={data0:d,saldo0:r2(numParse(sv))||0,cassa0:0};
   saveDB();render();toast('Data zero salvata');
 }
 function saveDep(ev){
