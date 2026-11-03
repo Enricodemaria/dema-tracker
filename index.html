@@ -257,12 +257,15 @@ function presetFor(desc,cat){
   return ((DB.setup.presetCat||{})[cat])||'';
 }
 const payOf=r=>r.pag||presetFor(r.desc,r.categoria)||'e';
+const addDay=desc=>{const x=(DB.setup.ricorrenti||[]).find(y=>keyD(y.desc)===keyD(desc));return x&&x.addGiorno?x.addGiorno:0};
+function addDateFor(dataISO,giorno){const a=String(dataISO).slice(0,7).split('-').map(Number),y=a[1]===12?a[0]+1:a[0],m=a[1]===12?1:a[1]+1;
+  return y+'-'+String(m).padStart(2,'0')+'-'+String(Math.min(giorno,new Date(y,m,0).getDate())).padStart(2,'0')}
 const cashDef=desc=>{const x=(DB.setup.ricorrenti||[]).find(y=>keyD(y.desc)===keyD(desc));return x&&x.cash!=null?x.cash:null};
 function splitOf(r){const v=payOf(r);if(v==='c')return r.importo;if(v!=='m')return 0;
   const c=r.contanti!=null?r.contanti:cashDef(r.desc);return Math.max(0,Math.min(c||0,r.importo))}
 const data0=()=>(DB.setup.banca&&DB.setup.banca.data0)||'';
 const pagShow=r=>r.pag||(data0()&&(r.data>data0()||payOf(r)==='r')?payOf(r):'');
-const pagPill=r=>{const v=pagShow(r);return v?`<span class="pill">${v==='r'?'Elettr. · '+fmtD(debitDate(r)).slice(0,5):payLbl(v)}</span>`:''};
+const pagPill=r=>{const v=pagShow(r);return v?`<span class="pill">${(v==='r'||(r.addebito&&v!=='c'))?(v==='m'?'Misto':'Elettr.')+' · '+fmtD(debitDate(r)).slice(0,5):payLbl(v)}</span>`:''};
 const payLbl=v=>v==='c'?'Contanti':v==='m'?'Misto':v==='r'?'Elettr. · mese dopo':'Elettr.';
 function suggestPag(desc,cat){
   const pr=presetFor(desc,cat);if(pr)return pr;
@@ -271,11 +274,12 @@ function suggestPag(desc,cat){
 }
 const payToggle=(id,v,misto)=>`<div id="${id}" data-v="${v}" class="chips" style="margin-top:0"><button type="button" class="chip${v==='c'?' on':''}" data-act="pick-pag" data-g="${id}" data-v="c">Contanti</button><button type="button" class="chip${v==='e'?' on':''}" data-act="pick-pag" data-g="${id}" data-v="e">Elettronico</button>${misto?`<button type="button" class="chip${v==='m'?' on':''}" data-act="pick-pag" data-g="${id}" data-v="m">Misto</button><button type="button" class="chip${v==='r'?' on':''}" data-act="pick-pag" data-g="${id}" data-v="r" title="Elettronico, addebitato a fine mese successivo">Elettronico · mese dopo</button>`:''}</div>`;
 function setPag(id,v){const g=document.getElementById(id);if(!g)return;g.dataset.v=v;g.querySelectorAll('[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
-  if(id==='s_pag'){const bx=$('#s_cashbox');if(bx)bx.hidden=v!=='m'}}
+  if(id==='s_pag'){const bx=$('#s_cashbox');if(bx)bx.hidden=v!=='m';const ab=$('#s_addbox');if(ab)ab.hidden=v==='c'}}
 function lastCash(desc){const l=DB.spese.filter(r=>r.pag==='m'&&r.contanti!=null&&keyD(r.desc)===keyD(desc)).sort((a,b)=>b.data.localeCompare(a.data))[0];return l?l.contanti:null}
 function fillCash(){const i=$('#s_cash');if(!i||UI.edit.sp||i.value)return;const d=$('#s_desc').value,v=cashDef(d)!=null?cashDef(d):lastCash(d);if(v!=null)i.value=String(v).replace('.',',')}
 function autoPag(){if(UI.edit.sp||!$('#s_pag'))return;if(!UI.pagTouched)setPag('s_pag',suggestPag($('#s_desc').value,$('#s_cat').value));if($('#s_pag').dataset.v==='m')fillCash()}
 function debitDate(r){
+  if(r.addebito&&payOf(r)!=='c')return r.addebito;
   if(payOf(r)!=='r')return r.data;
   const a=String(r.data).slice(0,7).split('-').map(Number),d=new Date(a[0],a[1]+1,0);
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -323,7 +327,7 @@ function cassaCard(){
   const ed=UI.edit.dep?DB.depositi.find(x=>x.id===UI.edit.dep):null;
   const deps=DB.depositi.slice().sort((a,b)=>b.data.localeCompare(a.data)).slice(0,6);
   return `<div class="card"><h2>Cassa e banca</h2>
-  <div class="kpis">${kpi('Saldo in banca',fmtE(C.banca),'stimato · partenza '+fmtD(C.d0),C.banca>=0?'pos':'neg')}${kpi('Prelievi totali',fmtE(C.prelievi+C.bon),'contanti '+fmtE(C.prelievi)+' · bonifici '+fmtE(C.bon))}${kpi('Da addebitare',fmtE(C.pend),'RIBA non ancora addebitate')}</div>
+  <div class="kpis">${kpi('Saldo in banca',fmtE(C.banca),'stimato · partenza '+fmtD(C.d0),C.banca>=0?'pos':'neg')}${kpi('Prelievi totali',fmtE(C.prelievi+C.bon),'contanti '+fmtE(C.prelievi)+' · bonifici '+fmtE(C.bon))}${kpi('Da addebitare',fmtE(C.pend),'non ancora usciti dal conto')}</div>
   <div class="cols2"><div><h3>Banca dal ${fmtD(C.d0)}</h3>${row('Saldo iniziale',C.s0)}${row('+ Incassi POS e Satispay',C.posIn)}${row('− Spese elettroniche',C.spE)}${row('− Tasse versate',C.tx)}${row('+ Depositi di contanti',C.dep)}${C.bon?row('− Bonifico mensile a te',C.bon):''}${C.pend?row('− RIBA da addebitare',C.pend)+row('= Saldo dopo gli addebiti',C.previsto,C.previsto>=0?'pos':'neg'):''}</div>
   <div><h3>Contanti dal ${fmtD(C.d0)}</h3>${C.c0?row('+ Contanti il giorno zero',C.c0):''}${row('+ Incassi in contanti',C.cashIn)}${row('− Spese in contanti',C.spC)}${row('− Depositati in banca',C.dep)}${row('= Prelievi contanti',C.prelievi,'')}</div></div>
   ${C.mesi.length?`<div class="tblwrap" style="margin-top:8px"><table class="tbl wide"><thead><tr><th>Mese</th><th class="r">Incassi contanti</th><th class="r">Spese contanti</th><th class="r">Depositi</th><th class="r">Prelievi contanti</th><th class="r">Bonifico</th></tr></thead><tbody>${C.mesi.map(m=>`<tr><td data-label="Mese">${labelYM(m.ym)}</td><td class="r" data-label="Incassi contanti">${fmtE(m.ci)}</td><td class="r" data-label="Spese contanti">${fmtE(m.sc)}</td><td class="r" data-label="Depositi">${fmtE(m.dp)}</td><td class="r" data-label="Prelievi contanti"><b>${fmtE(m.pr)}</b>${m.c0?` <span class="mut">(con ${fmtE(m.c0)} iniziali)</span>`:''}</td><td class="r" data-label="Bonifico">${m.bo?fmtE(m.bo):'—'}</td></tr>`).join('')}</tbody></table></div>`:''}
@@ -613,7 +617,7 @@ function vSpese(){
       <div><label for="s_cat">Categoria</label><select id="s_cat">${opt(DB.setup.categorie,'Materie Prime')}</select></div>
       <div><label for="s_ev">Evento</label><select id="s_ev">${opt(DB.setup.eventi.filter(e=>e!=='Chiusura straordinaria'),'','—')}</select></div>
     </div>
-    <div style="margin-top:10px"><label>Pagato con</label> ${payToggle('s_pag','e',true)}<div id="s_cashbox" hidden style="margin-top:8px;max-width:200px"><label for="s_cash">Di cui in contanti (€)</label><input type="text" inputmode="decimal" id="s_cash" placeholder="0,00"></div><a href="#" data-act="save-preset" class="note" style="display:inline-block;margin-top:4px;color:var(--acc-t)">Salva come predefinito per questa voce</a></div>
+    <div style="margin-top:10px"><label>Pagato con</label> ${payToggle('s_pag','e',true)}<div id="s_addbox" style="margin-top:8px;max-width:220px"><label for="s_add">Addebitata in banca il (se diverso)</label><input type="date" id="s_add"></div><div id="s_cashbox" hidden style="margin-top:8px;max-width:200px"><label for="s_cash">Di cui in contanti (€)</label><input type="text" inputmode="decimal" id="s_cash" placeholder="0,00"></div><a href="#" data-act="save-preset" class="note" style="display:inline-block;margin-top:4px;color:var(--acc-t)">Salva come predefinito per questa voce</a></div>
     <div class="row" style="margin-top:12px"><button class="btn" type="submit" id="spSave">Salva spesa</button><button class="btn sec" type="button" id="spCancel">Annulla</button></div>
   </form></div>`:'')+`<div class="card"><div style="display:flex;justify-content:flex-end;margin-bottom:4px"><button class="btn sec sm" data-act="close-open">Chiudi il mese</button></div><details class="fdet" data-k="sp" ${fOpen('sp')}><summary>Filtri${fCount('sp')}</summary><div class="row" style="margin-bottom:10px">
     <div><label>Dal</label><input type="date" data-f="sp.da" value="${UI.f.sp.da}"></div>
@@ -649,7 +653,7 @@ function fillSpForm(){
   $('#s_cat').value=r?r.categoria:'Materie Prime';$('#s_ev').value=r?r.evento||'':'';
   $('#sT').textContent=r?'Modifica spesa del '+fmtD(r.data):'Nuova spesa';
   $('#spSave').textContent=r?'Aggiorna spesa':'Salva spesa';
-  UI.pagTouched=false;setPag('s_pag',r?payOf(r):'e');$('#s_cash').value=(r&&r.contanti!=null)?String(r.contanti).replace('.',','):(r&&payOf(r)==='m'&&cashDef(r.desc)!=null?String(cashDef(r.desc)).replace('.',','):'');
+  UI.pagTouched=false;setPag('s_pag',r?payOf(r):'e');$('#s_add').value=(r&&r.addebito)||'';$('#s_cash').value=(r&&r.contanti!=null)?String(r.contanti).replace('.',','):(r&&payOf(r)==='m'&&cashDef(r.desc)!=null?String(cashDef(r.desc)).replace('.',','):'');
   renderSupChips();
 }
 function listSp(){
@@ -669,7 +673,8 @@ function saveSp(ev){
   const data=$('#s_data').value, desc=$('#s_desc').value.trim(), imp=r2(numParse($('#s_imp').value));
   if(!data||!desc||!imp){toast('Servono data, voce e importo');return}
   const pg=$('#s_pag').dataset.v||'e';
-  const rec={data,desc,importo:imp,categoria:$('#s_cat').value,evento:$('#s_ev').value,pag:pg};
+  const ad=$('#s_add').value;if(ad&&ad<data){toast('L\'addebito non può essere prima della spesa');return}
+  const rec={data,desc,importo:imp,categoria:$('#s_cat').value,evento:$('#s_ev').value,pag:pg,addebito:(pg!=='c'&&ad&&ad!==data)?ad:null};
   if(pg==='m'){const c=r2(numParse($('#s_cash').value));if(c<0||c>imp){toast('I contanti non possono superare l\'importo');return}rec.contanti=c}else rec.contanti=null;
   const ex=UI.edit.sp?DB.spese.find(x=>x.id===UI.edit.sp):null;
   if(ex)Object.assign(ex,rec);else DB.spese.push(Object.assign({id:uid('sp')},rec));
@@ -923,7 +928,7 @@ function closePanel(){
 function closeSave(){
   const C=UI.close;if(!C.data){toast('Manca la data');return}
   let n=0;
-  ricStatus(C.ym).forEach(s=>{if(s.hasHere)return;const v=r2(numParse(C.vals[s.k]));if(v>0){DB.spese.push({id:uid('sp'),data:C.data,desc:s.x.desc,importo:v,categoria:s.x.categoria,evento:'',pag:closePag(s),contanti:closePag(s)==='m'?Math.min(v,r2(numParse(closeCash(s)))||0):null});n++}});
+  ricStatus(C.ym).forEach(s=>{if(s.hasHere)return;const v=r2(numParse(C.vals[s.k]));if(v>0){DB.spese.push({id:uid('sp'),data:C.data,desc:s.x.desc,importo:v,categoria:s.x.categoria,evento:'',pag:closePag(s),addebito:(closePag(s)!=='c'&&s.x.addGiorno)?addDateFor(C.data,s.x.addGiorno):null,contanti:closePag(s)==='m'?Math.min(v,r2(numParse(closeCash(s)))||0):null});n++}});
   if(!n){toast('Nessun importo inserito');return}
   saveDB();UI.close={open:false,ym:'',data:'',vals:{}};render();toast('Aggiunte '+n+' spese');
 }
@@ -935,8 +940,8 @@ function mergeCard(){
   <div class="row"><div><label for="mg_from">Nome da sostituire</label><input type="text" id="mg_from" list="mg_names" style="max-width:240px"></div><div><label for="mg_to">Diventa</label><input type="text" id="mg_to" list="mg_names" style="max-width:240px"></div><button class="btn sec" data-act="merge-names">Unisci</button></div></div>`;
 }
 function ricCard(){
-  return `<div class="card"><h2>Voci ricorrenti di fine mese</h2><p class="note">Sono le voci che compaiono nel modulo "Chiudi il mese" (scheda Spese). Per ognuna scegli come viene pagata: con "Misto" una parte esce in contanti (puoi indicare l'importo abituale) e il resto dalla banca. "Elettronico · addebito fine mese dopo" è per le RIBA: pagamento elettronico che esce dal conto a fine mese successivo.</p>
-  <div class="tblwrap"><table class="tbl"><tbody>${DB.setup.ricorrenti.map((x,i)=>`<tr><td>${esc(x.desc)}</td><td class="mut">${esc(x.categoria)}</td><td><select data-rp="${i}" aria-label="Pagamento ${esc(x.desc)}"><option value="">Pagamento: predefinito</option><option value="e"${x.pag==='e'?' selected':''}>Elettronico</option><option value="c"${x.pag==='c'?' selected':''}>Contanti</option><option value="m"${x.pag==='m'?' selected':''}>Misto</option><option value="r"${x.pag==='r'?' selected':''}>Elettronico · addebito fine mese dopo</option></select>${x.pag==='m'?` <input type="text" inputmode="decimal" data-rc="${i}" value="${x.cash!=null?esc(String(x.cash).replace('.',',')):''}" placeholder="contanti abituali €" aria-label="Contanti abituali ${esc(x.desc)}" style="width:140px">`:''}</td><td class="r"><button class="btn danger sm" data-act="rm-ric" data-i="${i}">Rimuovi</button></td></tr>`).join('')||'<tr><td class="mut">Nessuna voce</td></tr>'}</tbody></table></div>
+  return `<div class="card"><h2>Voci ricorrenti di fine mese</h2><p class="note">Sono le voci che compaiono nel modulo "Chiudi il mese" (scheda Spese). Per ognuna scegli come viene pagata e, se in banca esce un giorno fisso del mese dopo (es. Luce il 28), scrivi quel giorno. Con "Misto" una parte esce in contanti (puoi indicare l'importo abituale) e il resto dalla banca. "Elettronico · addebito fine mese dopo" è per le RIBA: pagamento elettronico che esce dal conto a fine mese successivo.</p>
+  <div class="tblwrap"><table class="tbl"><tbody>${DB.setup.ricorrenti.map((x,i)=>`<tr><td>${esc(x.desc)}</td><td class="mut">${esc(x.categoria)}</td><td><select data-rp="${i}" aria-label="Pagamento ${esc(x.desc)}"><option value="">Pagamento: predefinito</option><option value="e"${x.pag==='e'?' selected':''}>Elettronico</option><option value="c"${x.pag==='c'?' selected':''}>Contanti</option><option value="m"${x.pag==='m'?' selected':''}>Misto</option><option value="r"${x.pag==='r'?' selected':''}>Elettronico · addebito fine mese dopo</option></select> <input type="text" inputmode="numeric" data-ra="${i}" value="${x.addGiorno||''}" placeholder="addebito: giorno del mese dopo" aria-label="Giorno di addebito ${esc(x.desc)}" style="width:150px">${x.pag==='m'?` <input type="text" inputmode="decimal" data-rc="${i}" value="${x.cash!=null?esc(String(x.cash).replace('.',',')):''}" placeholder="contanti abituali €" aria-label="Contanti abituali ${esc(x.desc)}" style="width:140px">`:''}</td><td class="r"><button class="btn danger sm" data-act="rm-ric" data-i="${i}">Rimuovi</button></td></tr>`).join('')||'<tr><td class="mut">Nessuna voce</td></tr>'}</tbody></table></div>
   <div class="row" style="margin-top:10px"><div><label for="new_ric">Nuova voce</label><input type="text" id="new_ric" style="max-width:240px"></div><div><label for="new_ric_cat">Categoria</label><select id="new_ric_cat">${opt(DB.setup.categorie,'Materie Prime')}</select></div><button class="btn sec" data-act="add-ric">Aggiungi</button></div></div>`;
 }
 
@@ -1231,6 +1236,7 @@ document.addEventListener('change',e=>{
   }
   if(t.id==='s_cat')autoPag();
   if(t.dataset.rp!==undefined){const x=DB.setup.ricorrenti[+t.dataset.rp];if(x){if(t.value)x.pag=t.value;else delete x.pag;if(t.value!=='m')delete x.cash;saveDB();render();toast('Salvato')}}
+  if(t.dataset.ra!==undefined){const x=DB.setup.ricorrenti[+t.dataset.ra];if(x){const g=parseInt(t.value,10);if(g>=1&&g<=31)x.addGiorno=g;else delete x.addGiorno;saveDB();toast('Salvato')}}
   if(t.dataset.rc!==undefined){const x=DB.setup.ricorrenti[+t.dataset.rc];if(x){const v=t.value.trim();if(v==='')delete x.cash;else x.cash=r2(numParse(v));saveDB();toast('Salvato')}}
   if(t.dataset.pi!==undefined){const p=DB.setup.presetPag[+t.dataset.pi];if(p){p.pag=t.value;saveDB();toast('Salvato')}}
   if(t.dataset.pc!==undefined){DB.setup.presetCat=DB.setup.presetCat||{};if(t.value)DB.setup.presetCat[t.dataset.pc]=t.value;else delete DB.setup.presetCat[t.dataset.pc];saveDB();toast('Salvato')}
