@@ -417,7 +417,7 @@ function stats(y){
   const dichiarato=sum(inc.map(r=>r.chiusura||0));
   const fissi=annuali+(correnti-mp), food=incasso?mp/incasso:NaN;
   const be=(1-food)>0?fissi/(1-food):NaN;
-  return {inc,sp,an,tx,incasso,aperti:aperti.length,media:aperti.length?incasso/aperti.length:0,
+  return {inc,sp,an,tx,incasso,ferie:inc.filter(r=>r.evento==='Ferie').length,aperti:aperti.length,media:aperti.length?incasso/aperti.length:0,
     correnti,annuali,mp,pers,spese,utile,tasse,dichiarato,food,
     prime:incasso?(mp+pers)/incasso:NaN,ebitda:incasso?utile/incasso:NaN,dopoTasse:utile-tasse,
     fissi,be,beDay:aperti.length?be/aperti.length:NaN};
@@ -438,7 +438,7 @@ function monthRows(y){
     for(let m=1;m<=12;m++){
       const p=yy+'-'+String(m).padStart(2,'0');
       const inc=DB.incassi.filter(r=>r.data.startsWith(p)), sp=DB.spese.filter(r=>r.data.startsWith(p)), an=[];
-      rows.push({p,label:MESI[m-1]+' '+yy,incasso:sum(inc.map(tot)),ap:inc.filter(r=>tot(r)>0).length,
+      rows.push({p,label:MESI[m-1]+' '+yy,incasso:sum(inc.map(tot)),ap:inc.filter(r=>tot(r)>0).length,fe:inc.filter(r=>r.evento==='Ferie').length,
         correnti:sum(sp.map(r=>r.importo)),annuali:annYear(yy)/12,
         mp:sum(sp.filter(r=>r.categoria==='Materie Prime').map(r=>r.importo)),has:inc.length+sp.length+an.length>0});
     }
@@ -493,7 +493,7 @@ function vRiepilogo(){
   if(!DB.incassi.length&&!DB.spese.length) return `<div class="card empty">Ancora nessun dato. Registra il primo incasso nella scheda <b>Incassi</b>, oppure carica il backup in <b>Setup</b>.</div>`;
   const mr=monthRows(UI.anno);
   const kp=`<div class="kpis">
-    ${kpi('Incasso',fmtE(S.incasso),S.aperti+' giorni di apertura')}
+    ${kpi('Incasso',fmtE(S.incasso),S.aperti+' giorni di apertura · '+S.ferie+' di ferie')}
     ${kpi('Spese totali',fmtE(S.spese),'correnti '+fmtI(S.correnti)+' € · annuali '+fmtI(S.annuali)+' €')}
     ${kpi('Utile',fmtE(S.utile),'EBITDA '+pct(S.ebitda),S.utile>=0?'pos':'neg')}
     ${kpi('Utile dopo tasse',fmtE(S.dopoTasse),'tasse e contributi '+fmtE(S.tasse),S.dopoTasse>=0?'pos':'neg')}
@@ -503,8 +503,8 @@ function vRiepilogo(){
     ${kpi('Dichiarato in cassa',fmtE(S.dichiarato),'somma della colonna Chiusura')}
   </div>`;
   const monthTbl=`<div class="card"><h2>Mese per mese</h2>${chart(mr)}
-    <div class="tblwrap"><table class="tbl wide"><thead><tr><th>Mese</th><th class="r">Incasso</th><th class="r">Spese correnti</th><th class="r">Annuali</th><th class="r">Utile</th><th class="r">Aperture</th><th class="r">Media/g</th><th class="r">Food</th></tr></thead><tbody>
-    ${mr.map(r=>{const u=r.incasso-r.correnti-r.annuali;return `<tr><td data-label="Mese">${esc(r.label)}</td><td class="r" data-label="Incasso">${fmtE(r.incasso)}</td><td class="r" data-label="Spese correnti">${fmtE(r.correnti)}</td><td class="r" data-label="Annuali">${r.annuali?fmtE(r.annuali):''}</td><td class="r ${u>=0?'pos':'neg'}" data-label="Utile">${fmtE(u)}</td><td class="r" data-label="Aperture">${r.ap}</td><td class="r" data-label="Media/g">${r.ap?fmtE(r.incasso/r.ap):'—'}</td><td class="r" data-label="Food">${r.incasso?pct(r.mp/r.incasso):'—'}</td></tr>`}).join('')}
+    <div class="tblwrap"><table class="tbl wide"><thead><tr><th>Mese</th><th class="r">Incasso</th><th class="r">Spese correnti</th><th class="r">Annuali</th><th class="r">Utile</th><th class="r">Aperture</th><th class="r">Ferie</th><th class="r">Media/g</th><th class="r">Food</th></tr></thead><tbody>
+    ${mr.map(r=>{const u=r.incasso-r.correnti-r.annuali;return `<tr><td data-label="Mese">${esc(r.label)}</td><td class="r" data-label="Incasso">${fmtE(r.incasso)}</td><td class="r" data-label="Spese correnti">${fmtE(r.correnti)}</td><td class="r" data-label="Annuali">${r.annuali?fmtE(r.annuali):''}</td><td class="r ${u>=0?'pos':'neg'}" data-label="Utile">${fmtE(u)}</td><td class="r" data-label="Aperture">${r.ap}</td><td class="r" data-label="Ferie">${r.fe||'—'}</td><td class="r" data-label="Media/g">${r.ap?fmtE(r.incasso/r.ap):'—'}</td><td class="r" data-label="Food">${r.incasso?pct(r.mp/r.incasso):'—'}</td></tr>`}).join('')}
     </tbody></table></div><div class="note" style="margin-top:6px">Le spese annuali sono spalmate in dodicesimi: ogni mese ne porta 1/12 del totale dell'anno.</div></div>`;
   // giorni settimana
   const wd=[1,2,3,4,5,6,0].map((d,i)=>{const rs=S.inc.filter(r=>tot(r)>0&&dow(r.data)===d);return {n:GGL[i],k:rs.length,t:sum(rs.map(tot))}});
