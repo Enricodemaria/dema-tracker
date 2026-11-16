@@ -619,8 +619,9 @@ function vSpese(){
     <div class="grid g4">
       <div><label for="s_data">Data</label><input type="date" id="s_data" required></div>
       <div style="grid-column:span 2"><label for="s_desc">Fornitore / descrizione</label><input type="text" id="s_desc" required autocomplete="off" autocapitalize="sentences"><div class="chips" id="s_chips"></div></div>
-      <div><label for="s_imp">Importo</label><input type="text" inputmode="decimal" id="s_imp" placeholder="0,00" required></div>
+      <div><label for="s_imp" id="s_implbl">Importo</label><input type="text" inputmode="decimal" id="s_imp" placeholder="0,00" required></div>
     </div>
+    <div id="s_ratabox" hidden style="margin-top:10px;max-width:260px"><label for="s_rata">Rata totale del mutuo (€)</label><input type="text" inputmode="decimal" id="s_rata" placeholder="0,00"><div class="note" style="margin-top:4px">Qui sopra metti solo gli interessi (è la spesa). La rata esce tutta dal conto: il resto è capitale e lo calcolo io.</div></div>
     <div class="grid g4" style="margin-top:10px">
       <div><label for="s_cat">Categoria</label><select id="s_cat">${opt(DB.setup.categorie,'Materie Prime')}</select></div>
       <div><label for="s_ev">Evento</label><select id="s_ev">${opt(DB.setup.eventi.filter(e=>e!=='Chiusura straordinaria'),'','—')}</select></div>
@@ -653,6 +654,11 @@ function renderSupChips(){
   const names=topSuppliers(known?'':cur);
   box.innerHTML=names.map(n=>`<button type="button" class="chip${keyD(n)===keyD(cur)?' on':''}" data-act="pick-sup" data-name="${esc(n)}">${esc(n)}</button>`).join('');
 }
+function syncMut(){
+  const bx=$('#s_ratabox');if(!bx)return;const b=DB.setup.banca||{},m=keyD($('#s_desc').value).includes(keyD(b.rataKey||'mutuo'))&&keyD($('#s_desc').value)!=='';
+  bx.hidden=!m;const l=$('#s_implbl');if(l)l.textContent=m?'Interessi':'Importo';
+  if(m&&!$('#s_rata').value&&b.rataImp)$('#s_rata').value=String(b.rataImp).replace('.',',');
+}
 function fillSpForm(){
   if(!$('#s_data'))return;
   const e=UI.edit.sp, r=e?DB.spese.find(x=>x.id===e):null;
@@ -662,7 +668,7 @@ function fillSpForm(){
   $('#sT').textContent=r?'Modifica spesa del '+fmtD(r.data):'Nuova spesa';
   $('#spSave').textContent=r?'Aggiorna spesa':'Salva spesa';
   UI.pagTouched=false;setPag('s_pag',r?payOf(r):'e');$('#s_add').value=(r&&r.addebito)||'';$('#s_cash').value=(r&&r.contanti!=null)?String(r.contanti).replace('.',','):(r&&payOf(r)==='m'&&cashDef(r.desc)!=null?String(cashDef(r.desc)).replace('.',','):'');
-  renderSupChips();
+  renderSupChips();$('#s_rata').value='';syncMut();
 }
 function listSp(){
   refreshFBadge('sp');const f=UI.f.sp, q=f.q.trim().toLowerCase();
@@ -684,6 +690,7 @@ function saveSp(ev){
   const ad=$('#s_add').value;if(ad&&ad<data){toast('L\'addebito non può essere prima della spesa');return}
   const rec={data,desc,importo:imp,categoria:$('#s_cat').value,evento:$('#s_ev').value,pag:pg,addebito:(pg!=='c'&&ad&&ad!==data)?ad:null};
   if(pg==='m'){const c=r2(numParse($('#s_cash').value));if(c<0||c>imp){toast('I contanti non possono superare l\'importo');return}rec.contanti=c}else rec.contanti=null;
+  const rb=$('#s_ratabox');if(rb&&!rb.hidden){const rv=r2(numParse($('#s_rata').value));if(rv>0){const bk=DB.setup.banca||(DB.setup.banca={});bk.rataImp=rv;if(!bk.rataGiorno)bk.rataGiorno=7}}
   const ex=UI.edit.sp?DB.spese.find(x=>x.id===UI.edit.sp):null;
   if(ex)Object.assign(ex,rec);else DB.spese.push(Object.assign({id:uid('sp')},rec));
   saveDB();UI.edit.sp=null;UI.open.sp=false;render();toast('Spesa salvata');
@@ -1190,7 +1197,7 @@ document.addEventListener('click',e=>{
   else if(a==='cmp-wa-auto'){UI.cmp.wa='';render()}
   else if(a==='cmp-ytd'){const t0=todayISO(),y=UI.cmp.b;UI.cmp.da=y+'-01-01';UI.cmp.dt=y===t0.slice(0,4)?t0:y+'-12-31';render()}
   else if(a==='cmp-full'){UI.cmp.da=UI.cmp.b+'-01-01';UI.cmp.dt=UI.cmp.b+'-12-31';render()}
-  else if(a==='pick-sup'){const n=t.dataset.name;$('#s_desc').value=n;const last=DB.spese.filter(r=>keyD(r.desc)===keyD(n)).sort((x,y)=>y.data.localeCompare(x.data))[0];if(last&&!UI.edit.sp)$('#s_cat').value=last.categoria;autoPag();renderSupChips();$('#s_imp').focus()}
+  else if(a==='pick-sup'){const n=t.dataset.name;$('#s_desc').value=n;syncMut();const last=DB.spese.filter(r=>keyD(r.desc)===keyD(n)).sort((x,y)=>y.data.localeCompare(x.data))[0];if(last&&!UI.edit.sp)$('#s_cat').value=last.categoria;autoPag();renderSupChips();$('#s_imp').focus()}
   else if(a==='pick-pag'){e.preventDefault();setPag(t.dataset.g,t.dataset.v);if(t.dataset.g==='s_pag')UI.pagTouched=true}
   else if(a==='save-preset'){e.preventDefault();const d=$('#s_desc').value.trim();if(!d){toast('Scrivi prima la voce');return}
     const v=$('#s_pag').dataset.v||'e',L=DB.setup.presetPag,ex=L.find(x=>keyD(x.k)===keyD(d));if(ex)ex.pag=v;else L.push({k:d,pag:v});saveDB();toast('«'+d+'» → '+(v==='c'?'contanti':'elettronico'))}
@@ -1223,7 +1230,7 @@ document.addEventListener('input',e=>{
   if(t.classList&&t.classList.contains('cm-cash')){UI.close.cash=UI.close.cash||{};UI.close.cash[t.dataset.k]=t.value}
   if(t.classList&&t.classList.contains('cm-rata')){UI.close.rata=t.value}
   if(t.classList&&t.classList.contains('cm-in')){UI.close.vals[t.dataset.k]=t.value;$('#cm_tot').textContent=fmtE(closeTot())}
-  if(t.id==='s_desc')renderSupChips();
+  if(t.id==='s_desc'){renderSupChips();syncMut()}
   if(t.id==='s_desc'&&!UI.edit.sp){
     const last=DB.spese.filter(r=>(r.desc||'').toLowerCase()===t.value.trim().toLowerCase()).sort((a,b)=>b.data.localeCompare(a.data))[0];
     if(last)$('#s_cat').value=last.categoria;
