@@ -302,7 +302,11 @@ function cassaCalc(asOf){
   if(bn>0){const a=d0.split('-').map(Number),t=oggi.split('-').map(Number);let y=a[0],m=a[1],g=0;
     while((y<t[0]||(y===t[0]&&m<=t[1]))&&g++<600){const ym=y+'-'+String(m).padStart(2,'0'),dd=ym+'-'+String(Math.min(bg,new Date(y,m,0).getDate())).padStart(2,'0');
       if(dd>d0&&dd<=oggi){bon+=bn;bonM[ym]=bn}m++;if(m>12){m=1;y++}}}
-  const banca=s0+posIn-spE-tx+dep-bon;
+  const cn=b.capImp||0,cg=b.capGiorno||7;let cap=0;                      // quota capitale del mutuo: esce dal conto ma non è una spesa
+  if(cn>0){const a=d0.split('-').map(Number),t=oggi.split('-').map(Number);let y=a[0],m=a[1],g=0;
+    while((y<t[0]||(y===t[0]&&m<=t[1]))&&g++<600){const dd=y+'-'+String(m).padStart(2,'0')+'-'+String(Math.min(cg,new Date(y,m,0).getDate())).padStart(2,'0');
+      if(dd>d0&&dd<=oggi)cap+=cn;m++;if(m>12){m=1;y++}}}
+  const banca=s0+posIn-spE-tx+dep-bon-cap;
   const mm={};const M=ym=>mm[ym]||(mm[ym]={ci:0,sc:0,dp:0});
   inc.forEach(r=>{M(r.data.slice(0,7)).ci+=r.contanti||0});
   cashRows.forEach(r=>{M(r.data.slice(0,7)).sc+=splitOf(r)});
@@ -310,7 +314,7 @@ function cassaCalc(asOf){
   Object.keys(bonM).forEach(ym=>M(ym));
   if(c0)M(d0.slice(0,7));
   const mesi=Object.keys(mm).sort().map(ym=>Object.assign({ym,c0:(c0&&ym===d0.slice(0,7))?c0:0,pr:(c0&&ym===d0.slice(0,7)?c0:0)+mm[ym].ci-mm[ym].sc-mm[ym].dp,bo:bonM[ym]||0},mm[ym]));
-  return {d0,s0,c0,posIn,cashIn,spE,spC,tx,dep,bon,banca,prelievi:c0+cashIn-spC-dep,mesi,pend,pendBy,previsto:banca-pend,
+  return {d0,s0,c0,posIn,cashIn,spE,spC,tx,dep,bon,cap,banca,prelievi:c0+cashIn-spC-dep,mesi,pend,pendBy,previsto:banca-pend,
     senza:cashRows.filter(r=>!r.pag).length};
 }
 function cassaCard(){
@@ -321,6 +325,8 @@ function cassaCard(){
     <div><label for="b_cassa">Contanti il giorno zero (€)</label><input type="text" inputmode="decimal" id="b_cassa" value="${esc(String(b.cassa0||0).replace('.',','))}" placeholder="0,00"></div></div>
     <div class="grid g2" style="margin-top:10px"><div><label for="b_bon">Bonifico automatico a te (€ al mese)</label><input type="text" inputmode="decimal" id="b_bon" value="${esc(String(b.data0?(b.bonImp||''):500).replace('.',','))}" placeholder="0,00"></div>
     <div><label for="b_gg">Giorno del mese</label><input type="text" inputmode="numeric" id="b_gg" value="${esc(String(b.bonGiorno||15))}"></div></div>
+    <div class="grid g2" style="margin-top:10px"><div><label for="b_cap">Quota capitale del mutuo (€ al mese, non è una spesa)</label><input type="text" inputmode="decimal" id="b_cap" value="${esc(String(b.capImp||'').replace('.',','))}" placeholder="0,00"></div>
+    <div><label for="b_capgg">Giorno del mese</label><input type="text" inputmode="numeric" id="b_capgg" value="${esc(String(b.capGiorno||7))}"></div></div>
     <div class="row" style="margin-top:10px"><button class="btn" type="submit">${b.data0?'Aggiorna':'Imposta data zero'}</button></div></form>`;
   if(!C)return `<div class="card"><h2>Cassa e banca</h2><p class="note">Scegli un giorno di partenza e inserisci il saldo del conto a fine giornata Da lì in poi calcolo quanto hai in banca e quanti contanti hai prelevato dagli incassi. I contanti del giorno zero sono quelli che hai in mano quel giorno e che devi ancora versare (la cassa fissa non conta).</p>${bform}</div>`;
   const row=(l,v,cls)=>`<div style="display:flex;justify-content:space-between;gap:10px;margin:3px 0"><span class="mut">${l}</span><b${cls?` class="${cls}"`:''}>${fmtE(v)}</b></div>`;
@@ -328,7 +334,7 @@ function cassaCard(){
   const deps=DB.depositi.slice().sort((a,b)=>b.data.localeCompare(a.data)).slice(0,6);
   return `<div class="card"><h2>Cassa e banca</h2>
   <div class="kpis">${kpi('Saldo in banca',fmtE(C.banca),'stimato · partenza '+fmtD(C.d0),C.banca>=0?'pos':'neg')}${kpi('Prelievi totali',fmtE(C.prelievi+C.bon),'contanti '+fmtE(C.prelievi)+' · bonifici '+fmtE(C.bon))}${kpi('Da addebitare',fmtE(C.pend),'non ancora usciti dal conto')}</div>
-  <div class="cols2"><div><h3>Banca dal ${fmtD(C.d0)}</h3>${row('Saldo iniziale',C.s0)}${row('+ Incassi POS e Satispay',C.posIn)}${row('− Spese elettroniche',C.spE)}${row('− Tasse versate',C.tx)}${row('+ Depositi di contanti',C.dep)}${C.bon?row('− Bonifico mensile a te',C.bon):''}${C.pend?row('− RIBA da addebitare',C.pend)+row('= Saldo dopo gli addebiti',C.previsto,C.previsto>=0?'pos':'neg'):''}</div>
+  <div class="cols2"><div><h3>Banca dal ${fmtD(C.d0)}</h3>${row('Saldo iniziale',C.s0)}${row('+ Incassi POS e Satispay',C.posIn)}${row('− Spese elettroniche',C.spE)}${row('− Tasse versate',C.tx)}${row('+ Depositi di contanti',C.dep)}${C.bon?row('− Bonifico mensile a te',C.bon):''}${C.cap?row('− Quota capitale mutuo',C.cap):''}${C.pend?row('− RIBA da addebitare',C.pend)+row('= Saldo dopo gli addebiti',C.previsto,C.previsto>=0?'pos':'neg'):''}</div>
   <div><h3>Contanti dal ${fmtD(C.d0)}</h3>${C.c0?row('+ Contanti il giorno zero',C.c0):''}${row('+ Incassi in contanti',C.cashIn)}${row('− Spese in contanti',C.spC)}${row('− Depositati in banca',C.dep)}${row('= Prelievi contanti',C.prelievi,'')}</div></div>
   ${C.mesi.length?`<div class="tblwrap" style="margin-top:8px"><table class="tbl wide"><thead><tr><th>Mese</th><th class="r">Incassi contanti</th><th class="r">Spese contanti</th><th class="r">Depositi</th><th class="r">Prelievi contanti</th><th class="r">Bonifico</th></tr></thead><tbody>${C.mesi.map(m=>`<tr><td data-label="Mese">${labelYM(m.ym)}</td><td class="r" data-label="Incassi contanti">${fmtE(m.ci)}</td><td class="r" data-label="Spese contanti">${fmtE(m.sc)}</td><td class="r" data-label="Depositi">${fmtE(m.dp)}</td><td class="r" data-label="Prelievi contanti"><b>${fmtE(m.pr)}</b>${m.c0?` <span class="mut">(con ${fmtE(m.c0)} iniziali)</span>`:''}</td><td class="r" data-label="Bonifico">${m.bo?fmtE(m.bo):'—'}</td></tr>`).join('')}</tbody></table></div>`:''}
   ${C.pend?`<div class="note">Addebiti in arrivo: ${Object.keys(C.pendBy).sort().map(d=>fmtD(d)+' · '+fmtE(C.pendBy[d])).join(' — ')}</div>`:''}
@@ -375,7 +381,7 @@ function saveBanca(ev){
   ev.preventDefault();
   const d=$('#b_data').value,sv=$('#b_saldo').value.trim();
   if(!d||sv===''){toast('Servono data e saldo');return}
-  DB.setup.banca={data0:d,saldo0:r2(numParse(sv))||0,cassa0:r2(numParse($('#b_cassa').value))||0,bonImp:r2(numParse($('#b_bon').value))||0,bonGiorno:Math.min(31,Math.max(1,parseInt($('#b_gg').value,10)||15))};
+  DB.setup.banca={data0:d,saldo0:r2(numParse(sv))||0,cassa0:r2(numParse($('#b_cassa').value))||0,bonImp:r2(numParse($('#b_bon').value))||0,bonGiorno:Math.min(31,Math.max(1,parseInt($('#b_gg').value,10)||15)),capImp:r2(numParse($('#b_cap').value))||0,capGiorno:Math.min(31,Math.max(1,parseInt($('#b_capgg').value,10)||7))};
   saveDB();render();toast('Data zero salvata');
 }
 function depSheet(){
