@@ -621,7 +621,7 @@ function vSpese(){
       <div style="grid-column:span 2"><label for="s_desc">Fornitore / descrizione</label><input type="text" id="s_desc" required autocomplete="off" autocapitalize="sentences"><div class="chips" id="s_chips"></div></div>
       <div><label for="s_imp" id="s_implbl">Importo</label><input type="text" inputmode="decimal" id="s_imp" placeholder="0,00" required></div>
     </div>
-    <div id="s_ratabox" hidden style="margin-top:10px;max-width:260px"><label for="s_rata">Rata totale del mutuo (€)</label><input type="text" inputmode="decimal" id="s_rata" placeholder="0,00"><div class="note" style="margin-top:4px">Qui sopra metti solo gli interessi (è la spesa). La rata esce tutta dal conto: il resto è capitale e lo calcolo io.</div></div>
+    <div id="s_ratabox" hidden style="margin-top:10px;max-width:260px"><label for="s_rata">Rata totale del mutuo (€)</label><input type="text" inputmode="decimal" id="s_rata" placeholder="0,00"><div class="note" style="margin-top:4px">Il capitale (rata meno interessi) lo calcolo io e non conta come spesa.</div></div>
     <div class="grid g4" style="margin-top:10px">
       <div><label for="s_cat">Categoria</label><select id="s_cat">${opt(DB.setup.categorie,'Materie Prime')}</select></div>
       <div><label for="s_ev">Evento</label><select id="s_ev">${opt(DB.setup.eventi.filter(e=>e!=='Chiusura straordinaria'),'','—')}</select></div>
