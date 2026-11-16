@@ -915,8 +915,10 @@ function ricStatus(ym){
     return {x,k,hasHere:here.length>0,here:sum(here.map(r=>r.importo)),prev:p?{v:p.importo,ym:ymOf(p.data),c:p.pag==='m'?p.contanti:null}:null};
   });
 }
-function openClose(y){const ym=y||defaultCloseYM();UI.tab='spese';UI.close={open:true,ym,data:lastDay(ym),vals:{}};render();toTop()}
+function openClose(y){const ym=y||defaultCloseYM();UI.tab='spese';UI.close={open:true,ym,data:lastDay(ym),vals:{},rata:null};render();toTop()}
 function closeTot(){return sum(ricStatus(UI.close.ym).filter(s=>!s.hasHere).map(s=>numParse(UI.close.vals[s.k])))}
+const isMut=s=>{const b=DB.setup.banca||{};return keyD(s.x.desc).includes(keyD(b.rataKey||'mutuo'))};
+const closeRata=()=>{const r=UI.close.rata;if(r!=null)return r;const b=DB.setup.banca||{};return b.rataImp?String(b.rataImp).replace('.',','):''};
 const closePag=s=>(UI.close.pag&&UI.close.pag[s.k])||presetFor(s.x.desc,s.x.categoria)||'e';
 const closeCash=s=>{const m=UI.close.cash||{};if(m[s.k]!=null)return m[s.k];if(s.x.cash!=null)return String(s.x.cash).replace('.',',');return s.prev&&s.prev.c!=null?String(s.prev.c).replace('.',','):''};
 function closePanel(){
@@ -928,15 +930,16 @@ function closePanel(){
   <div><label for="cm_data">Data delle spese</label><input type="date" id="cm_data" value="${esc(C.data)}"></div></div>
   <div class="clist">${st.map((s,i)=>({s,i})).sort((a,b)=>(a.s.hasHere?1:0)-(b.s.hasHere?1:0)).map(({s,i})=>s.hasHere
     ?`<div class="crow done"><div class="cn"><b>${esc(s.x.desc)}</b><small>${esc(s.x.categoria)}</small></div><span class="pill">già registrata · ${fmtE(s.here)}</span></div>`
-    :`<div class="crow"><div class="cn"><b>${esc(s.x.desc)}</b><small>${esc(s.x.categoria)}${s.prev?` · ultimo <a href="#" data-act="fill-prev" data-i="${i}" style="color:var(--acc-t)">${fmtE(s.prev.v)}</a> ${MESI[+s.prev.ym.slice(5)-1].slice(0,3)}`:''}</small></div><button type="button" class="chip" data-act="close-pag" data-k="${esc(s.k)}" aria-label="Metodo di pagamento" style="min-height:32px;padding:4px 10px;font-size:13px">${payLbl(closePag(s))}</button>${closePag(s)==='m'?`<input type="text" inputmode="decimal" class="cm-cash" data-k="${esc(s.k)}" value="${esc(closeCash(s))}" placeholder="contanti" aria-label="Di cui in contanti ${esc(s.x.desc)}" style="width:88px;flex:none;text-align:right">`:''}<input type="text" inputmode="decimal" class="cm-in" data-k="${esc(s.k)}" value="${esc(C.vals[s.k]||'')}" placeholder="0,00" aria-label="Importo ${esc(s.x.desc)}"></div>`).join('')}</div>
+    :`<div class="crow"><div class="cn"><b>${esc(s.x.desc)}</b><small>${esc(s.x.categoria)}${s.prev?` · ultimo <a href="#" data-act="fill-prev" data-i="${i}" style="color:var(--acc-t)">${fmtE(s.prev.v)}</a> ${MESI[+s.prev.ym.slice(5)-1].slice(0,3)}`:''}</small></div><button type="button" class="chip" data-act="close-pag" data-k="${esc(s.k)}" aria-label="Metodo di pagamento" style="min-height:32px;padding:4px 10px;font-size:13px">${payLbl(closePag(s))}</button>${closePag(s)==='m'?`<input type="text" inputmode="decimal" class="cm-cash" data-k="${esc(s.k)}" value="${esc(closeCash(s))}" placeholder="contanti" aria-label="Di cui in contanti ${esc(s.x.desc)}" style="width:88px;flex:none;text-align:right">`:''}${isMut(s)?`<input type="text" inputmode="decimal" class="cm-rata" value="${esc(closeRata())}" placeholder="rata" aria-label="Rata totale del mutuo" style="width:88px;flex:none;text-align:right">`:''}<input type="text" inputmode="decimal" class="cm-in" data-k="${esc(s.k)}" value="${esc(C.vals[s.k]||'')}" placeholder="${isMut(s)?'interessi':'0,00'}" aria-label="${isMut(s)?'Interessi':'Importo'} ${esc(s.x.desc)}"></div>`).join('')}</div>
   <div class="csave"><div><span class="mut">Totale da salvare</span><div class="tot" id="cm_tot">${fmtE(closeTot())}</div></div>
   <div class="row"><button class="btn" data-act="close-save">Salva le voci compilate</button><button class="btn sec" data-act="close-cancel">Annulla</button></div></div>
   <div class="note" style="margin-top:6px">Il tasto accanto all'importo cambia il metodo di pagamento (parte dal predefinito). Le voci lasciate vuote non vengono registrate. Toccando l'ultimo importo lo copi nel campo.</div></div>`;
 }
 function closeSave(){
   const C=UI.close;if(!C.data){toast('Manca la data');return}
-  let n=0;
-  ricStatus(C.ym).forEach(s=>{if(s.hasHere)return;const v=r2(numParse(C.vals[s.k]));if(v>0){DB.spese.push({id:uid('sp'),data:C.data,desc:s.x.desc,importo:v,categoria:s.x.categoria,evento:'',pag:closePag(s),addebito:(closePag(s)!=='c'&&s.x.addGiorno)?addDateFor(C.data,s.x.addGiorno):null,contanti:closePag(s)==='m'?Math.min(v,r2(numParse(closeCash(s)))||0):null});n++}});
+  let n=0;const bk=DB.setup.banca||(DB.setup.banca={}),rataG=bk.rataGiorno||7;
+  const rv=r2(numParse(closeRata()));if(rv>0&&rv!==bk.rataImp){bk.rataImp=rv;if(!bk.rataGiorno)bk.rataGiorno=7}
+  ricStatus(C.ym).forEach(s=>{if(s.hasHere)return;const v=r2(numParse(C.vals[s.k]));if(v>0){DB.spese.push({id:uid('sp'),data:C.data,desc:s.x.desc,importo:v,categoria:s.x.categoria,evento:'',pag:closePag(s),addebito:(closePag(s)!=='c'&&(s.x.addGiorno||(isMut(s)&&rataG)))?addDateFor(C.data,s.x.addGiorno||rataG):null,contanti:closePag(s)==='m'?Math.min(v,r2(numParse(closeCash(s)))||0):null});n++}});
   if(!n){toast('Nessun importo inserito');return}
   saveDB();UI.close={open:false,ym:'',data:'',vals:{}};render();toast('Aggiunte '+n+' spese');
 }
@@ -1218,6 +1221,7 @@ document.addEventListener('input',e=>{
   const t=e.target;
   if(['i_c','i_p','i_s'].includes(t.id))updIncTot();
   if(t.classList&&t.classList.contains('cm-cash')){UI.close.cash=UI.close.cash||{};UI.close.cash[t.dataset.k]=t.value}
+  if(t.classList&&t.classList.contains('cm-rata')){UI.close.rata=t.value}
   if(t.classList&&t.classList.contains('cm-in')){UI.close.vals[t.dataset.k]=t.value;$('#cm_tot').textContent=fmtE(closeTot())}
   if(t.id==='s_desc')renderSupChips();
   if(t.id==='s_desc'&&!UI.edit.sp){
